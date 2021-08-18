@@ -107,6 +107,9 @@ def getRequiredArgs():
 
     # define the optional arguments
     optional = parser.add_argument_group('Optional arguments')
+    optional.add_argument("--weight_only", "-w",
+                          help='Tag reads with GC_bias (YC_tag) instead of sampling',
+                          action='store_true')
     optional.add_argument("--help", "-h", action="help",
                           help="show this help message and exit")
 
@@ -618,7 +621,7 @@ def main(args=None):
                 continue
             length = min(size, i + chunkSize)
             mp_args.append((chrom, chrNameBamToBit[chrom], i, length,
-                            bedGraphStep))
+                            bedGraphStep,args.weight_only))
             c += 1
 
     pool = multiprocessing.Pool(args.numberOfProcessors)
