@@ -10,6 +10,7 @@ import argparse
 from scipy.stats import poisson
 import py2bit
 import sys
+import math
 
 from deeptoolsintervals import GTF
 from deeptools.utilities import tbitToBamChrName, getGC_content
@@ -144,6 +145,12 @@ def getRequiredArgs():
 
     return parser
 
+rng = np.random.default_rng()
+
+def roundGCLenghtBias(gc):
+    gc_frac,gc_int = math.modf(round(gc*100,2))
+    gc_new = gc_int + rng.binomial(1, gc_frac)
+    return int(gc_new)
 
 def getPositionsToSample(chrom, start, end, stepSize):
     """
@@ -330,7 +337,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
             #gc = getGC_content(tbit, chromNameBit, int(i), int(i + fragmentLength['median']), fraction=True)
             gc = getGC_content(tbit, chromNameBit, int(i), int(i + fragmentLength), fraction=True)
             #print(f"pre: {gc}")
-            gc = round(gc*100)
+            gc = roundGCLenghtBias(gc)
             #print(f"post: {gc}")
         except Exception as detail:
             if verbose:
