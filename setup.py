@@ -83,6 +83,7 @@ setup(
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Bio-Informatics'],
     install_requires=[
+        "pandas >=1.3.0"
         "numpy >= 1.9.0",
         "scipy >= 0.17.0",
         "matplotlib >= 3.3.0",
