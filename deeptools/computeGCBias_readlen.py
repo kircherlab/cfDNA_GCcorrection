@@ -292,7 +292,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
               "sample".format(time.time() - startTime))
 
     positions_to_sample = getPositionsToSample(chromNameBit,
-                                               start, end, stepSize)
+                                               start, end-fragmentLength, stepSize) # substract fragment length to not exeed chrom
 
     read_counts = []
     # Optimize IO.
@@ -330,7 +330,11 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
         # stop if the end of the chromosome is reached
         #if i + fragmentLength['median'] > tbit.chroms(chromNameBit):
         if i + fragmentLength > tbit.chroms(chromNameBit):
-            sys.stderr(f"Breaking because chrom length exeeded: {i+fragmentLength} > {tbit.chroms(chromNameBit)}")
+            c_name = tbit.chroms(chromNameBit)
+            ifrag = i+fragmentLength
+            print(c_name)
+            print(ifrag)
+            sys.stderr(f"Breaking because chrom length exeeded: {ifrag} > {c_name}")
             break
 
         try:
@@ -460,6 +464,79 @@ def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
     #return data
     return data
 
+def interpolate_ratio(df):
+    # separate hypothetical read density from measured read density
+    N_GC = df.loc["N_gc_hyp_reads"]
+    F_GC = df.loc["F_gc_reads"]
+    
+    # get min and max values
+    N_GC_min, N_GC_max =  np.nanmin(N_GC.index), np.nanmax(N_GC.index)
+    F_GC_min, F_GC_max =  np.nanmin(F_GC.index), np.nanmax(F_GC.index)
+    
+    # sparse grid for hypothetical read density
+    N_GC_readlen = N_GC.index.to_numpy(dtype=int)
+    N_GC_gc = N_GC.columns.to_numpy(dtype=int)
+    N_xx,N_yy = np.meshgrid(N_GC_gc,N_GC_readlen)
+    
+    # sparse grid for measured read density
+    F_GC_readlen = F_GC.index.to_numpy(dtype=int)
+    F_GC_gc = F_GC.columns.to_numpy(dtype=int)
+    F_xx,F_yy = np.meshgrid(F_GC_gc,F_GC_readlen)
+    
+    # determine nans for sparse data
+    N_nans = np.isnan(N_GC.to_numpy())
+    F_nans = np.isnan(F_GC.to_numpy())
+    
+    # determine nans for sparse data
+    N_nans = np.isnan(N_GC.to_numpy())
+    F_nans = np.isnan(F_GC.to_numpy())
+    
+    # Select non_NaN coordinates
+    N_X = N_xx[~N_nans]
+    N_Y = N_yy[~N_nans]
+    F_X = F_xx[~F_nans]
+    F_Y = F_yy[~F_nans]
+    #reshape sparse coordinates to shape (N, 2) in 2d
+    N_sparse_points = np.stack([N_X,N_Y],-1)
+    F_sparse_points = np.stack([F_X,F_Y],-1)
+    
+    N_zz = N_GC.to_numpy()[~N_nans]
+    F_zz = F_GC.to_numpy()[~F_nans]
+    
+    N_f2 = interpolate.RBFInterpolator(N_sparse_points,N_zz,kernel="quintic", smoothing=0.1)
+    F_f2 = interpolate.RBFInterpolator(F_sparse_points,F_zz,kernel="quintic", smoothing=0.1)
+    
+    scaling_dict = dict()
+    for i in np.arange(N_GC_min,N_GC_max+1,1):
+        ref_a,ref_b = np.meshgrid(N_GC.columns.to_numpy(dtype=int),i)
+        ref_dense = np.stack([ref_a.ravel(), ref_b.ravel()], -1)
+        N_tmp = N_f2(ref_dense).reshape(ref_a.shape)
+        F_tmp = F_f2(ref_dense).reshape(ref_a.shape)
+        scaling_dict[i] = float(np.sum(N_tmp)) / float(np.sum(F_tmp))
+    
+    # get dense data (full GC and readlen range)
+    N_a,N_b = np.meshgrid(N_GC.columns.to_numpy(dtype=int), np.arange(N_GC_min,N_GC_max+1,1))
+    F_a,F_b = np.meshgrid(F_GC.columns.to_numpy(dtype=int), np.arange(F_GC_min,F_GC_max+1,1))
+    # convert to 2D coordinate pairs
+    N_dense_points = np.stack([N_a.ravel(), N_b.ravel()], -1)
+    F_dense_points = np.stack([F_a.ravel(), F_b.ravel()], -1)
+    
+    r_list = list()
+    for i in N_dense_points:
+        x = i.reshape(1,2)
+        scaling = scaling_dict[x[0][1]]
+        if N_f2(x) > 0 and F_f2(x) > 0:
+            ratio = float(F_f2(x) / N_f2(x) * scaling)
+        else:
+            ratio = 1
+        r_list.append(ratio)
+    
+    ratio_dense = np.array(r_list).reshape(N_a.shape)
+    ind = pd.MultiIndex.from_product([["R_gc"], np.arange(N_GC_min,N_GC_max+1,1)])
+    
+    return pd.DataFrame(ratio_dense,columns=N_GC.columns, index=ind)
+
+
 
 def main(args=None):
     args = parse_arguments().parse_args(args)
@@ -530,7 +607,9 @@ def main(args=None):
                              verbose=args.verbose,
                              region=args.region)
 
-    data.to_csv(args.GCbiasFrequenciesFile.name, sep="\t")
+    r_data = interpolate_ratio(data)
+    out_data = data.append(r_data)
+    out_data.to_csv(args.GCbiasFrequenciesFile.name, sep="\t")
 
 #    np.savetxt(args.GCbiasFrequenciesFile.name, data)
 
