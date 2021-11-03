@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import argparse
 from scipy.stats import poisson
+from scipy import interpolate
 import py2bit
 import sys
 import math
