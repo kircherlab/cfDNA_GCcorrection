@@ -572,7 +572,7 @@ def main(args=None):
     # chromSizes: list of tuples
     chromSizes = [(bam.references[i], bam.lengths[i])
                   for i in range(len(bam.references))]
-    chromSizes = [x for x in chromSizes if x[0] in tbit.chroms()]
+    #chromSizes = [x for x in chromSizes if x[0] in tbit.chroms()] # why would you do this? There is a mapping specifically instead of tbut.chroms()
 
     max_read_dict = dict()
     min_read_dict = dict()
