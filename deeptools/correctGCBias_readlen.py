@@ -284,8 +284,9 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                                   chrNameBit)
 
             if gc:
-                copies= R_gc.loc[r_len,str(gc)]
                 #copies = numCopiesOfRead(float(1) / R_gc[gc])
+                #copies= R_gc.loc[r_len,str(gc)]
+                copies = numCopiesOfRead(float(1) / R_gc.loc[r_len,str(gc)])
             else:
                 copies = 1
         # is this read in the same orientation and position as the previous?
