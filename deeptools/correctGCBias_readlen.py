@@ -469,7 +469,7 @@ def main(args=None):
     global F_gc, N_gc, R_gc
 
     #data = np.loadtxt(args.GCbiasFrequenciesFile.name)
-    data = pd.read_csv("ratio_df.tsv", sep="\t",index_col=[0,1])
+    data = pd.read_csv(args.GCbiasFrequenciesFile.name, sep="\t",index_col=[0,1])
 
     F_gc = data.loc["F_gc_reads"]
     N_gc = data.loc["N_gc_hyp_reads"]
