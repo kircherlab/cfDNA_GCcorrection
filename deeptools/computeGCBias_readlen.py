@@ -122,34 +122,34 @@ def getRequiredArgs():
                           type=argparse.FileType('r'),
                           metavar='BED file')
 
-    plot = parser.add_argument_group('Diagnostic plot options')
-
-    plot.add_argument('--biasPlot',
-                      metavar='FILE NAME',
-                      help='If given, a diagnostic image summarizing '
-                      'the GC-bias will be saved.')
-
-    plot.add_argument('--plotFileFormat',
-                      metavar='',
-                      help='image format type. If given, this '
-                      'option overrides the '
-                      'image format based on the plotFile ending. '
-                      'The available options are: "png", '
-                      '"eps", "pdf", "plotly" and "svg"',
-                      choices=['png', 'pdf', 'svg', 'eps', 'plotly'])
-
-    plot.add_argument('--regionSize',
-                      metavar='INT',
-                      type=int,
-                      default=300,
-                      help='To plot the reads per %%GC over a region'
-                      'the size of the region is required. By default, '
-                      'the bin size is set to 300 bases, which is close to the '
-                      'standard fragment size for Illumina machines. However, '
-                      'if the depth of sequencing is low, a larger bin size '
-                      'will be required, otherwise many bins will not '
-                      'overlap with any read (Default: %(default)s)')
-
+#    plot = parser.add_argument_group('Diagnostic plot options')
+#
+#    plot.add_argument('--biasPlot',
+#                      metavar='FILE NAME',
+#                      help='If given, a diagnostic image summarizing '
+#                      'the GC-bias will be saved.')
+#
+#    plot.add_argument('--plotFileFormat',
+#                      metavar='',
+#                      help='image format type. If given, this '
+#                      'option overrides the '
+#                      'image format based on the plotFile ending. '
+#                      'The available options are: "png", '
+#                      '"eps", "pdf", "plotly" and "svg"',
+#                      choices=['png', 'pdf', 'svg', 'eps', 'plotly'])
+#
+#    plot.add_argument('--regionSize',
+#                      metavar='INT',
+#                      type=int,
+#                      default=300,
+#                      help='To plot the reads per %%GC over a region'
+#                      'the size of the region is required. By default, '
+#                      'the bin size is set to 300 bases, which is close to the '
+#                      'standard fragment size for Illumina machines. However, '
+#                      'if the depth of sequencing is low, a larger bin size '
+#                      'will be required, otherwise many bins will not '
+#                      'overlap with any read (Default: %(default)s)')
+#
     return parser
 
 rng = np.random.default_rng()
@@ -631,7 +631,6 @@ def main(args=None):
     # the GC of the genome is sampled each stepSize bp.
     stepSize = max(int(global_vars['genome_size'] / args.sampleSize), 1)
     print("stepSize for genome sampling: {}".format(stepSize))
-    
 
     data = tabulateGCcontent(fragmentLengths,
                              chrNameBitToBam, stepSize,
