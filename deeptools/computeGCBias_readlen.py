@@ -590,7 +590,12 @@ def main(args=None):
     tbit = py2bit.open(global_vars['2bit'])
     bam, mapped, unmapped, stats = bamHandler.openBam(global_vars['bam'], returnStats=True, nThreads=args.numberOfProcessors)
 
-    fragmentLengths = np.arange(args.minLength,args.maxLength+1,args.lengthStep).tolist()
+    if args.interpolate:
+        length_step = args.lengthStep
+    else:
+        length_step = 1
+
+    fragmentLengths = np.arange(args.minLength,args.maxLength+1,length_step).tolist()
 
     chrNameBitToBam = tbitToBamChrName(list(tbit.chroms().keys()), bam.references)
 
