@@ -102,6 +102,11 @@ def getRequiredArgs():
                           'Will be ignored if interpolate is set.'
                           '(Default: %(default)s)',
                           type=int)
+    optional.add_argument("--interpolate", "-I",
+                          help='Interpolates GC values and correction for missing read lengths.'
+                          'This might substantially reduce computation time, but might lead to'
+                          'less accurate results. Deactivated by default.',
+                          action='store_true')
     optional.add_argument("--help", "-h", action="help",
                           help="show this help message and exit")
 
@@ -537,7 +542,34 @@ def interpolate_ratio(df):
     
     return pd.DataFrame(ratio_dense,columns=N_GC.columns, index=ind)
 
+def get_ratio(df):
+    # separate hypothetical read density from measured read density
+    N_GC = df.loc["N_gc_hyp_reads"]
+    F_GC = df.loc["F_gc_reads"]
+    # get min and max values
+    N_GC_min, N_GC_max =  np.nanmin(N_GC.index), np.nanmax(N_GC.index)
+    F_GC_min, F_GC_max =  np.nanmin(F_GC.index), np.nanmax(F_GC.index)
+    
+    scaling_dict = dict()
+    for i in np.arange(N_GC_min,N_GC_max+1,1):
+        N_tmp = N_GC.loc[i].to_numpy()
+        F_tmp = F_GC.loc[i].to_numpy()
+        scaling_dict[i] = float(np.sum(N_tmp)) / float(np.sum(F_tmp))
 
+    r_dict = dict()
+    for i in np.arange(N_GC_min,N_GC_max+1,1):
+        F_gc_t = F_GC_ref.loc[i]
+        N_gc_t = N_GC_ref.loc[i]
+        R_gc_t = np.array([float(F_gc_t[x]) / N_gc_t[x] * scaling
+                         if N_gc_t[x] and F_gc_t[x] > 0 else 1
+                         for x in range(len(F_gc_t))])
+        r_dict[i] = R_gc_t
+    
+    ratio_dense = pd.DataFrame.from_dict(r_dict, orient="index", columns=N_GC.columns)
+    ind = pd.MultiIndex.from_product([["R_gc"], ratio_dense.index])
+    ratio_dense.index = ind
+    
+    return ratio_dense
 
 def main(args=None):
     args = parse_arguments().parse_args(args)
@@ -608,11 +640,13 @@ def main(args=None):
                              verbose=args.verbose,
                              region=args.region)
 
-    r_data = interpolate_ratio(data)
+    if args.interpolate:
+        r_data = interpolate_ratio(data)
+    else:
+        r_data = get_ratio(data)
     out_data = data.append(r_data)
     out_data.to_csv(args.GCbiasFrequenciesFile.name, sep="\t")
 
-#    np.savetxt(args.GCbiasFrequenciesFile.name, data)
 
 
 if __name__ == "__main__":
