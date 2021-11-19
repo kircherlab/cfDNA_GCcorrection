@@ -323,7 +323,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                  #                   decimals=2))
             readTag.append(
                 #('YC', float(round(float(1) / R_gc[gc], 2)), "f"))
-                ('YC', float(round(R_gc.loc[r_len,str(gc)], 2)), "f"))
+                ('YC', float(round(float(1) / R_gc.loc[r_len,str(gc)], 2)), "f"))
             readTag.append(('YN', copies, "i"))
         else:
             GC = -1
