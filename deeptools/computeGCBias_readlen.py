@@ -89,17 +89,18 @@ def getRequiredArgs():
     optional.add_argument('--minLength', '-min',
                           default=30,
                           help='Minimum fragment length to consider for bias computation.'
-                          '(Default: %(default)s',
+                          '(Default: %(default)s)',
                           type=int)
     optional.add_argument('--maxLength', '-max',
                           default=250,
                           help='Maximum fragment length to consider for bias computation.'
-                          '(Default: %(default)s',
+                          '(Default: %(default)s)',
                           type=int)
     optional.add_argument('--lengthStep', '-fstep',
                           default=5,
                           help='Step size for fragment lenghts between minimum and maximum fragment length.'
-                          '(Default: %(default)s',
+                          'Will be ignored if interpolate is set.'
+                          '(Default: %(default)s)',
                           type=int)
     optional.add_argument("--help", "-h", action="help",
                           help="show this help message and exit")
