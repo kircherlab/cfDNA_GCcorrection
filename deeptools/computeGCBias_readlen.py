@@ -531,8 +531,8 @@ def interpolate_ratio(df):
     for i in N_dense_points:
         x = i.reshape(1,2)
         scaling = scaling_dict[x[0][1]]
-        if N_f2(x) > 0 and F_f2(x) > 0:
-            ratio = float(F_f2(x) / N_f2(x) * scaling)
+        if N_f2(x).round() > 0 and F_f2(x).round() > 0:
+            ratio = float(F_f2(x).round() / N_f2(x).round() * scaling)
         else:
             ratio = 1
         r_list.append(ratio)
