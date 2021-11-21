@@ -558,8 +558,9 @@ def get_ratio(df):
 
     r_dict = dict()
     for i in np.arange(N_GC_min,N_GC_max+1,1):
-        F_gc_t = F_GC_ref.loc[i]
-        N_gc_t = N_GC_ref.loc[i]
+        scaling = scaling_dict[i]
+        F_gc_t = F_GC.loc[i]
+        N_gc_t = N_GC.loc[i]
         R_gc_t = np.array([float(F_gc_t[x]) / N_gc_t[x] * scaling
                          if N_gc_t[x] and F_gc_t[x] > 0 else 1
                          for x in range(len(F_gc_t))])
