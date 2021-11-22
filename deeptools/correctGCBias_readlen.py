@@ -294,7 +294,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                 and read.is_reverse == reads[r_index - 1].is_reverse \
                 and read.pnext == reads[r_index - 1].pnext:
             read_repetitions += 1
-            if read_repetitions >= global_vars['max_dup_gc'][gc]:
+            if read_repetitions >= global_vars['max_dup_gc'][r_len][gc]:
                 copies = 0  # in other words do not take into account this read
                 removed_duplicated_reads += 1
         else:
@@ -323,7 +323,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                  #                   decimals=2))
             readTag.append(
                 #('YC', float(round(float(1) / R_gc[gc], 2)), "f"))
-                ('YC', float(round(float(1) / R_gc.loc[r_len,str(gc)], 2)), "f"))
+                ('YC', float(round(float(1) / R_gc.loc[r_len,str(gc)], 2)), "f")) # do I need to handle rare, unseen read lenghts?
             readTag.append(('YN', copies, "i"))
         else:
             GC = -1
@@ -471,9 +471,11 @@ def main(args=None):
     #data = np.loadtxt(args.GCbiasFrequenciesFile.name)
     data = pd.read_csv(args.GCbiasFrequenciesFile.name, sep="\t",index_col=[0,1])
 
-    F_gc = data.loc["F_gc_reads"]
-    N_gc = data.loc["N_gc_hyp_reads"]
+    F_gc = data.loc["F_gc"]
+    N_gc = data.loc["N_gc"]
     R_gc = data.loc["R_gc"]
+
+    N_GC_min, N_GC_max =  np.nanmin(N_gc.index), np.nanmax(N_gc.index)
 
     global global_vars
     global_vars = {}
@@ -483,9 +485,16 @@ def main(args=None):
     # compute the probability to find more than one read (a redundant read)
     # at a certain position based on the gc of the read fragment
     # the binomial function is used for that
-    max_dup_gc = [binom.isf(1e-7, F_gc[x], 1.0 / N_gc[x])
-                  if F_gc[x] > 0 and N_gc[x] > 0 else 1
-                  for x in range(len(F_gc))]
+    #max_dup_gc = [binom.isf(1e-7, F_gc[x], 1.0 / N_gc[x])
+    #              if F_gc[x] > 0 and N_gc[x] > 0 else 1
+    #              for x in range(len(F_gc))]
+    max_dup_gc = dict()
+    for i in np.arange(N_GC_min,N_GC_max+1,1):
+        N_tmp = N_gc.loc[i].to_numpy()
+        F_tmp = F_gc.loc[i].to_numpy()
+        max_dup_gc[i] = [binom.isf(1e-7, F_tmp[x], 1.0 / N_tmp[x])
+                        if F_tmp[x] > 0 and N_tmp[x] > 0 else 1
+                        for x in range(len(F_tmp))]
 
     global_vars['max_dup_gc'] = max_dup_gc
 
