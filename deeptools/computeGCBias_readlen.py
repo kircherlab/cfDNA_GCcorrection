@@ -107,6 +107,11 @@ def getRequiredArgs():
                           'This might substantially reduce computation time, but might lead to'
                           'less accurate results. Deactivated by default.',
                           action='store_true')
+    optional.add_argument("--MeasurementOutput", "-MO",
+                          help='Writes measured values to an output file.'
+                          'This option is only active is Interpolation is activated.',
+                          type=argparse.FileType('w'),
+                          metavar='FILE')
     optional.add_argument("--help", "-h", action="help",
                           help="show this help message and exit")
 
@@ -528,6 +533,9 @@ def interpolate_ratio(df):
     F_dense_points = np.stack([F_a.ravel(), F_b.ravel()], -1)
     
     r_list = list()
+    f_list = list()
+    n_list = list()
+
     for i in N_dense_points:
         x = i.reshape(1,2)
         scaling = scaling_dict[x[0][1]]
@@ -535,12 +543,24 @@ def interpolate_ratio(df):
             ratio = float(F_f2(x).round() / N_f2(x).round() * scaling)
         else:
             ratio = 1
+        f_list.append(float(F_f2(x).round()))
+        n_list.append(float(N_f2(x).round()))
         r_list.append(ratio)
     
     ratio_dense = np.array(r_list).reshape(N_a.shape)
-    ind = pd.MultiIndex.from_product([["R_gc"], np.arange(N_GC_min,N_GC_max+1,1)])
+    F_dense = np.array(f_list).reshape(N_a.shape)
+    N_dense = np.array(n_list).reshape(N_a.shape)
     
-    return pd.DataFrame(ratio_dense,columns=N_GC.columns, index=ind)
+    # create indices for distributions
+    ind_N = pd.MultiIndex.from_product([["N_gc"], np.arange(N_GC_min,N_GC_max+1,1)])
+    ind_F = pd.MultiIndex.from_product([["F_gc"], np.arange(N_GC_min,N_GC_max+1,1)])
+    ind_R = pd.MultiIndex.from_product([["R_gc"], np.arange(N_GC_min,N_GC_max+1,1)])
+    # numpy to dataframe with indices
+    NInt_df = pd.DataFrame(N_dense,columns=N_GC.columns, index=ind_N)
+    FInt_df = pd.DataFrame(F_dense,columns=N_GC.columns, index=ind_F)
+    RInt_df = pd.DataFrame(ratio_dense,columns=N_GC.columns, index=ind_R)
+    
+    return NInt_df.append(FInt_df).append(RInt_df)
 
 def get_ratio(df):
     # separate hypothetical read density from measured read density
@@ -644,13 +664,19 @@ def main(args=None):
                              numberOfProcessors=args.numberOfProcessors,
                              verbose=args.verbose,
                              region=args.region)
-
+# change the way data is handled 
     if args.interpolate:
+        if args.MeasurementOutput:
+            print("saving measured data")
+            data.to_csv(args.MeasurementOutput.name, sep="\t")
         r_data = interpolate_ratio(data)
+        r_data.to_csv(args.GCbiasFrequenciesFile.name, sep="\t")
     else:
+        if args.MeasurementOutput:
+            print("Option MeasurementOutput has no effect. Measured data is saved in GCbiasFrequenciesFile!")
         r_data = get_ratio(data)
-    out_data = data.append(r_data)
-    out_data.to_csv(args.GCbiasFrequenciesFile.name, sep="\t")
+        out_data = data.append(r_data)
+        out_data.to_csv(args.GCbiasFrequenciesFile.name, sep="\t")
 
 
 
