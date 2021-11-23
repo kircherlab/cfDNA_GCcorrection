@@ -280,7 +280,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
     [0 5 1 0]
 
     """
-    print(f"fragmentLength: {fragmentLength}")
+    #print(f"fragmentLength: {fragmentLength}")
     if start > end:
         raise NameError("start %d bigger that end %d" % (start, end))
 
@@ -567,8 +567,8 @@ def get_ratio(df):
     N_GC = df.loc["N_gc_hyp_reads"]
     F_GC = df.loc["F_gc_reads"]
     # get min and max values
-    N_GC_min, N_GC_max =  np.nanmin(N_GC.index), np.nanmax(N_GC.index)
-    F_GC_min, F_GC_max =  np.nanmin(F_GC.index), np.nanmax(F_GC.index)
+    N_GC_min, N_GC_max =  np.nanmin(N_GC.index.astype("int")), np.nanmax(N_GC.index.astype("int"))
+    F_GC_min, F_GC_max =  np.nanmin(F_GC.index.astype("int")), np.nanmax(F_GC.index.astype("int"))
     
     scaling_dict = dict()
     for i in np.arange(N_GC_min,N_GC_max+1,1):
