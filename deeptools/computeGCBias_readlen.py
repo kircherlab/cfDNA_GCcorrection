@@ -428,6 +428,7 @@ def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
     Fdict = dict()
 
     for fragmentLength in fragmentLengths:
+        print(f"processing fragmentLength: {fragmentLength}")
         imap_res = mapReduce.mapReduce((stepSize,
                                         fragmentLength, chrNameBamToBit,
                                         verbose),
@@ -571,13 +572,14 @@ def get_ratio(df):
     F_GC_min, F_GC_max =  np.nanmin(F_GC.index.astype("int")), np.nanmax(F_GC.index.astype("int"))
     
     scaling_dict = dict()
-    for i in np.arange(N_GC_min,N_GC_max+1,1):
+    for i in N_GC.index:
+        print(i)
         N_tmp = N_GC.loc[i].to_numpy()
         F_tmp = F_GC.loc[i].to_numpy()
         scaling_dict[i] = float(np.sum(N_tmp)) / float(np.sum(F_tmp))
 
     r_dict = dict()
-    for i in np.arange(N_GC_min,N_GC_max+1,1):
+    for i in N_GC.index:
         scaling = scaling_dict[i]
         F_gc_t = F_GC.loc[i]
         N_gc_t = N_GC.loc[i]
