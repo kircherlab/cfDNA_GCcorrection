@@ -6,6 +6,7 @@ import shutil
 import time
 import subprocess
 import sys
+import math
 
 import py2bit
 import pysam
