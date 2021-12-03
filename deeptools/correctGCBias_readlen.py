@@ -193,6 +193,11 @@ def numCopiesOfRead(value):
         copies = int(value) + (1 if np.random.rand() < value % 1 else 0)
     return copies
 
+def findNearestIndex(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
+
 
 def writeCorrectedSam_wrapper(args):
     return writeCorrectedSam_worker(*args)
@@ -288,7 +293,12 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             if gc:
                 #copies = numCopiesOfRead(float(1) / R_gc[gc])
                 #copies= R_gc.loc[r_len,str(gc)]
-                copies = numCopiesOfRead(float(1) / R_gc.loc[r_len,str(gc)])
+                try:
+                    copies = numCopiesOfRead(float(1) / R_gc.loc[r_len][str(gc)])
+                except KeyError as e:
+                    r_len = findNearestIndex(R_gc.index,r_len)
+                    print(f"Read length {e} was not in correction table. Correction was done with closest available read length: {r_len} ", file=sys.stderr)
+                    copies = numCopiesOfRead(float(1) / R_gc.loc[r_len][str(gc)])
             else:
                 copies = 1
         # is this read in the same orientation and position as the previous?
@@ -325,7 +335,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                  #                   decimals=2))
             readTag.append(
                 #('YC', float(round(float(1) / R_gc[gc], 2)), "f"))
-                ('YC', float(round(float(1) / R_gc.loc[r_len,str(gc)], 2)), "f")) # do I need to handle rare, unseen read lenghts?
+                ('YC', float(round(float(1) / R_gc.loc[r_len][str(gc)], 2)), "f")) # do I need to handle rare, unseen read lenghts?
             readTag.append(('YN', copies, "i"))
         else:
             GC = -1
