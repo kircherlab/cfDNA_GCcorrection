@@ -167,7 +167,6 @@ def getReadGCcontent(tbit, read, chrNameBit): # fragmentLength not needed anymor
         return None
     if gc is None:
         return None
-
     # match the gc to the given fragmentLength
     #gc = int(np.round(gc * fragmentLength))
     return gc
@@ -237,10 +236,10 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
     >>> res = os.remove(tempFile+".bai")
     """
     global R_gc
-    fragmentLength = len(R_gc) - 1
+    fragmentLength = len(R_gc) - 1 # is this needed anymore?
 
     if verbose:
-        print("Sam for %s %s %s " % (chrNameBit, start, end))
+        sys.stderr.write("Sam for %s %s %s " % (chrNameBit, start, end))
     i = 0
 
     tbit = py2bit.open(global_vars['2bit'])
@@ -282,6 +281,8 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             # by some filtering
             gc = getReadGCcontent(tbit, read, # fragmentLength, not needed anymore
                                   chrNameBit)
+            #if verbose_flag:
+            #    sys.stderr.write(f"writeCorrectedSam_worker; gc:{gc}")
 
             if gc:
                 #copies = numCopiesOfRead(float(1) / R_gc[gc])
@@ -355,7 +356,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
         if verbose:
             if i % 500000 == 0 and i > 0:
                 endTime = time.time()
-                print("{},  processing {} ({:.1f} per sec) reads "
+                sys.stderr.write("{},  processing {} ({:.1f} per sec) reads "
                       "@ {}:{}-{}".format(multiprocessing.current_process().name,
                                           i, i / (endTime - startTime),
                                           chrNameBit, start, end))
@@ -364,88 +365,88 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
     outfile.close()
     if verbose:
         endTime = time.time()
-        print("{},  processing {} ({:.1f} per sec) reads "
+        sys.stderr.write("{},  processing {} ({:.1f} per sec) reads "
               "@ {}:{}-{}".format(multiprocessing.current_process().name,
                                   i, i / (endTime - startTime),
                                   chrNameBit, start, end))
         percentage = float(removed_duplicated_reads) * 100 / len(reads) \
             if len(reads) > 0 else 0
-        print("duplicated reads removed %d of %d (%.2f) " %
+        sys.stderr.write("duplicated reads removed %d of %d (%.2f) " %
               (removed_duplicated_reads, len(reads), percentage))
 
     return tempFileName
 
 
-def getFragmentFromRead(read, defaultFragmentLength, extendPairedEnds=True):
-    """
-    The read has to be pysam object.
-
-    The following values are defined (for forward reads)::
-
-
-             |--          -- read.tlen --              --|
-             |-- read.alen --|
-        -----|===============>------------<==============|----
-             |               |            |
-          read.pos      read.aend      read.pnext
-
-
-          and for reverse reads
-
-
-             |--             -- read.tlen --           --|
-                                         |-- read.alen --|
-        -----|===============>-----------<===============|----
-             |                           |               |
-          read.pnext                   read.pos      read.aend
-
-    this is a sketch of a pair-end reads
-
-    The function returns the fragment start and end, either
-    using the paired end information (if available) or
-    extending the read in the appropriate direction if this
-    is single-end.
-
-    Parameters
-    ----------
-    read : pysam read object
-
-
-    Returns
-    -------
-    tuple
-        (fragment start, fragment end)
-
-    """
-    # convert reads to fragments
-
-    # this option indicates that the paired ends correspond
-    # to the fragment ends
-    # condition read.tlen < maxPairedFragmentLength is added to avoid read pairs
-    # that span thousands of base pairs
-
-    if extendPairedEnds is True and read.is_paired and 0 < abs(read.tlen) < 1000:
-        if read.is_reverse:
-            fragmentStart = read.pnext
-            fragmentEnd = read.aend
-        else:
-            fragmentStart = read.pos
-            # the end of the fragment is defined as
-            # the start of the forward read plus the insert length
-            fragmentEnd = read.pos + read.tlen
-    else:
-        if defaultFragmentLength <= read.aend - read.pos:
-            fragmentStart = read.pos
-            fragmentEnd = read.aend
-        else:
-            if read.is_reverse:
-                fragmentStart = read.aend - defaultFragmentLength
-                fragmentEnd = read.aend
-            else:
-                fragmentStart = read.pos
-                fragmentEnd = read.pos + defaultFragmentLength
-
-    return fragmentStart, fragmentEnd
+#def getFragmentFromRead(read, defaultFragmentLength, extendPairedEnds=True):
+#    """
+#    The read has to be pysam object.
+#
+#    The following values are defined (for forward reads)::
+#
+#
+#             |--          -- read.tlen --              --|
+#             |-- read.alen --|
+#        -----|===============>------------<==============|----
+#             |               |            |
+#          read.pos      read.aend      read.pnext
+#
+#
+#          and for reverse reads
+#
+#
+#             |--             -- read.tlen --           --|
+#                                         |-- read.alen --|
+#        -----|===============>-----------<===============|----
+#             |                           |               |
+#          read.pnext                   read.pos      read.aend
+#
+#    this is a sketch of a pair-end reads
+#
+#    The function returns the fragment start and end, either
+#    using the paired end information (if available) or
+#    extending the read in the appropriate direction if this
+#    is single-end.
+#
+#    Parameters
+#    ----------
+#    read : pysam read object
+#
+#
+#    Returns
+#    -------
+#    tuple
+#        (fragment start, fragment end)
+#
+#    """
+#    # convert reads to fragments
+#
+#    # this option indicates that the paired ends correspond
+#    # to the fragment ends
+#    # condition read.tlen < maxPairedFragmentLength is added to avoid read pairs
+#    # that span thousands of base pairs
+#
+#    if extendPairedEnds is True and read.is_paired and 0 < abs(read.tlen) < 1000:
+#        if read.is_reverse:
+#            fragmentStart = read.pnext
+#            fragmentEnd = read.aend
+#        else:
+#            fragmentStart = read.pos
+#            # the end of the fragment is defined as
+#            # the start of the forward read plus the insert length
+#            fragmentEnd = read.pos + read.tlen
+#    else:
+#        if defaultFragmentLength <= read.aend - read.pos:
+#            fragmentStart = read.pos
+#            fragmentEnd = read.aend
+#        else:
+#            if read.is_reverse:
+#                fragmentStart = read.aend - defaultFragmentLength
+#                fragmentEnd = read.aend
+#            else:
+#                fragmentStart = read.pos
+#                fragmentEnd = read.pos + defaultFragmentLength
+#
+#    return fragmentStart, fragmentEnd
 
 
 def run_shell_command(command):
@@ -466,6 +467,8 @@ def run_shell_command(command):
 
 def main(args=None):
     args = process_args(args)
+    global verbose_flag
+    verbose_flag = args.verbose
     global F_gc, N_gc, R_gc
 
     #data = np.loadtxt(args.GCbiasFrequenciesFile.name)
@@ -495,7 +498,8 @@ def main(args=None):
         max_dup_gc[i] = [binom.isf(1e-7, F_tmp[x], 1.0 / N_tmp[x])
                         if F_tmp[x] > 0 and N_tmp[x] > 0 else 1
                         for x in range(len(F_tmp))]
-
+    if verbose_flag:
+        sys.stderr.write(f"max_dup_gc: {max_dup_gc}")
     global_vars['max_dup_gc'] = max_dup_gc
 
     tbit = py2bit.open(global_vars['2bit'])
@@ -507,7 +511,7 @@ def main(args=None):
         float(global_vars['total_reads']) / args.effectiveGenomeSize
 
     # apply correction
-    print("applying correction")
+    sys.stderr.write("applying correction")
     # divide the genome in fragments containing about 4e5 reads.
     # This amount of reads takes about 20 seconds
     # to process per core (48 cores, 256 Gb memory)
@@ -523,13 +527,13 @@ def main(args=None):
             mapReduce.getUserRegion(chromSizes, args.region,
                                     max_chunk_size=chunkSize)
 
-    print("genome partition size for multiprocessing: {}".format(chunkSize))
-    print("using region {}".format(args.region))
+    sys.stderr.write("genome partition size for multiprocessing: {}".format(chunkSize))
+    sys.stderr.write("using region {}".format(args.region))
     mp_args = []
     bedGraphStep = args.binSize
     chrNameBitToBam = tbitToBamChrName(list(tbit.chroms().keys()), bam.references)
     chrNameBamToBit = dict([(v, k) for k, v in chrNameBitToBam.items()])
-    print(chrNameBitToBam, chrNameBamToBit)
+    sys.stderr.write(f"{chrNameBitToBam}, {chrNameBamToBit}")
     c = 1
     for chrom, size in chromSizes:
         start = 0 if regionStart == 0 else regionStart
@@ -537,9 +541,9 @@ def main(args=None):
             try:
                 chrNameBamToBit[chrom]
             except KeyError:
-                print("no sequence information for ")
+                sys.stderr.write("no sequence information for ")
                 "chromosome {} in 2bit file".format(chrom)
-                print("Reads in this chromosome will be skipped")
+                sys.stderr.write("Reads in this chromosome will be skipped")
                 continue
             length = min(size, i + chunkSize)
             mp_args.append((chrom, chrNameBamToBit[chrom], i, length,
@@ -550,7 +554,7 @@ def main(args=None):
 
     if args.correctedFile.name.endswith('bam'):
         if len(mp_args) > 1 and args.numberOfProcessors > 1:
-            print(("using {} processors for {} "
+            sys.stderr.write(("using {} processors for {} "
                    "number of tasks".format(args.numberOfProcessors,
                                             len(mp_args))))
 
@@ -563,7 +567,7 @@ def main(args=None):
             command = "cp {} {}".format(res[0], args.correctedFile.name)
             run_shell_command(command)
         else:
-            print("concatenating (sorted) intermediate BAMs")
+            sys.stderr.write("concatenating (sorted) intermediate BAMs")
             header = pysam.Samfile(res[0])
             of = pysam.Samfile(args.correctedFile.name, "wb", template=header)
             header.close()
@@ -574,7 +578,7 @@ def main(args=None):
                 f.close()
             of.close()
 
-        print("indexing BAM")
+        sys.stderr.write("indexing BAM")
         pysam.index(args.correctedFile.name)
 
         for tempFileName in res:
