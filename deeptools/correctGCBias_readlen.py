@@ -272,10 +272,10 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
         r_index += 1
         copies = None
         gc = None
-        r_len = read.template_length
-
-        # check if a mate has already been procesed
-        # to apply the same correction
+        if read.is_paired and read.is_proper_pair:
+            r_len = abs(read.template_length)
+        else: 
+            r_len = read.query_length
         try:
             copies = matePairs[read.qname]['copies']
             gc = matePairs[read.qname]['gc']
