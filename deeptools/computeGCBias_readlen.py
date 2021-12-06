@@ -459,7 +459,7 @@ def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
         #print(Ndict)
     
     # create multi-index dict
-    dataDict = {"N_gc_hyp_reads":Ndict,"F_gc_reads":Fdict}
+    dataDict = {"N_gc":Ndict,"F_gc":Fdict}
     multiindex_dict = {(i,j): dataDict[i][j] 
        for i in dataDict.keys() 
        for j in dataDict[i].keys()}
@@ -479,8 +479,8 @@ def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
 
 def interpolate_ratio(df):
     # separate hypothetical read density from measured read density
-    N_GC = df.loc["N_gc_hyp_reads"]
-    F_GC = df.loc["F_gc_reads"]
+    N_GC = df.loc["N_gc"]
+    F_GC = df.loc["F_gc"]
     
     # get min and max values
     N_GC_min, N_GC_max =  np.nanmin(N_GC.index.astype("int")), np.nanmax(N_GC.index.astype("int"))
@@ -565,8 +565,8 @@ def interpolate_ratio(df):
 
 def get_ratio(df):
     # separate hypothetical read density from measured read density
-    N_GC = df.loc["N_gc_hyp_reads"]
-    F_GC = df.loc["F_gc_reads"]
+    N_GC = df.loc["N_gc"]
+    F_GC = df.loc["F_gc"]
     # get min and max values
     N_GC_min, N_GC_max =  np.nanmin(N_GC.index.astype("int")), np.nanmax(N_GC.index.astype("int"))
     F_GC_min, F_GC_max =  np.nanmin(F_GC.index.astype("int")), np.nanmax(F_GC.index.astype("int"))
