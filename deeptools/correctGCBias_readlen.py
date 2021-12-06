@@ -272,6 +272,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
         r_index += 1
         copies = None
         gc = None
+        weight = None
         if read.is_paired and read.is_proper_pair:
             r_len = abs(read.template_length)
         else: 
@@ -297,7 +298,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                     copies = numCopiesOfRead(float(1) / R_gc.loc[r_len][str(gc)])
                 except KeyError as e:
                     r_len = findNearestIndex(R_gc.index,r_len)
-                    print(f"Read length {e} was not in correction table. Correction was done with closest available read length: {r_len} ", file=sys.stderr)
+                    print(f"Copies: Read length {e} was not in correction table. Correction was done with closest available read length: {r_len} ", file=sys.stderr)
                     copies = numCopiesOfRead(float(1) / R_gc.loc[r_len][str(gc)])
             else:
                 copies = 1
@@ -333,10 +334,17 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
         if gc:
             GC = gc#int(100 * np.round(float(gc) / fragmentLength,
                  #                   decimals=2))
-            readTag.append(
+            try:
                 #('YC', float(round(float(1) / R_gc[gc], 2)), "f"))
-                ('YC', float(round(float(1) / R_gc.loc[r_len][str(gc)], 2)), "f")) # do I need to handle rare, unseen read lenghts?
-            readTag.append(('YN', copies, "i"))
+                readTag.append(
+                    ('YC',float(round(float(1) / R_gc.loc[r_len][str(gc)], 2)) , "f")
+                    )
+            except KeyError as e:
+                r_len = findNearestIndex(R_gc.index,r_len)
+                print(f"Weight: Read length {e} was not in correction table. Correction was done with closest available read length: {r_len} ", file=sys.stderr)
+                readTag.append(
+                    ('YC',float(round(float(1) / R_gc.loc[r_len][str(gc)], 2)) , "f")
+                    )
         else:
             GC = -1
 
