@@ -307,7 +307,12 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                 and read.is_reverse == reads[r_index - 1].is_reverse \
                 and read.pnext == reads[r_index - 1].pnext:
             read_repetitions += 1
-            if read_repetitions >= global_vars['max_dup_gc'][r_len][gc]:
+            try:
+                tmp_max_dup_gc = global_vars['max_dup_gc'][r_len][gc]
+            except KeyError as e:
+                r_len = findNearestIndex(R_gc.index,r_len)# a logging.info would be nice in the future
+                tmp_max_dup_gc = global_vars['max_dup_gc'][r_len][gc]
+            if read_repetitions >= tmp_max_dup_gc:
                 copies = 0  # in other words do not take into account this read
                 removed_duplicated_reads += 1
         else:
