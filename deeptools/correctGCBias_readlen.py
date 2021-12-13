@@ -7,6 +7,7 @@ import time
 import subprocess
 import sys
 import math
+import logging
 
 import py2bit
 import pysam
@@ -245,7 +246,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
     fragmentLength = len(R_gc) - 1 # is this needed anymore?
 
     if verbose:
-        sys.stderr.write("Sam for %s %s %s " % (chrNameBit, start, end))
+        logging.debug("Sam for %s %s %s " % (chrNameBit, start, end))
     i = 0
 
     tbit = py2bit.open(global_vars['2bit'])
@@ -288,8 +289,8 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             # by some filtering
             gc = getReadGCcontent(tbit, read, # fragmentLength, not needed anymore
                                   chrNameBit)
-            #if verbose_flag:
-            #    sys.stderr.write(f"writeCorrectedSam_worker; gc:{gc}")
+            if verbose_flag:
+                logging.debug(f"writeCorrectedSam_worker; gc:{gc}")
 
             if gc:
                 #copies = numCopiesOfRead(float(1) / R_gc[gc])
@@ -298,7 +299,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                     copies = numCopiesOfRead(float(1) / R_gc.loc[r_len][str(gc)])
                 except KeyError as e:
                     r_len = findNearestIndex(R_gc.index,r_len)
-                    print(f"Copies: Read length {e} was not in correction table. Correction was done with closest available read length: {r_len} ", file=sys.stderr)
+                    logging.debug(f"Copies: Read length {e} was not in correction table. Correction was done with closest available read length: {r_len} ", file=sys.stderr)
                     copies = numCopiesOfRead(float(1) / R_gc.loc[r_len][str(gc)])
             else:
                 copies = 1
@@ -346,7 +347,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                     )
             except KeyError as e:
                 r_len = findNearestIndex(R_gc.index,r_len)
-                print(f"Weight: Read length {e} was not in correction table. Correction was done with closest available read length: {r_len} ", file=sys.stderr)
+                logging.debug(f"Weight: Read length {e} was not in correction table. Correction was done with closest available read length: {r_len} ", file=sys.stderr)
                 readTag.append(
                     ('YC',float(round(float(1) / R_gc.loc[r_len][str(gc)], 2)) , "f")
                     )
@@ -380,7 +381,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
         if verbose:
             if i % 500000 == 0 and i > 0:
                 endTime = time.time()
-                sys.stderr.write("{},  processing {} ({:.1f} per sec) reads "
+                logging.debug("{},  processing {} ({:.1f} per sec) reads "
                       "@ {}:{}-{}".format(multiprocessing.current_process().name,
                                           i, i / (endTime - startTime),
                                           chrNameBit, start, end))
@@ -389,13 +390,13 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
     outfile.close()
     if verbose:
         endTime = time.time()
-        sys.stderr.write("{},  processing {} ({:.1f} per sec) reads "
+        logging.debug("{},  processing {} ({:.1f} per sec) reads "
               "@ {}:{}-{}".format(multiprocessing.current_process().name,
                                   i, i / (endTime - startTime),
                                   chrNameBit, start, end))
         percentage = float(removed_duplicated_reads) * 100 / len(reads) \
             if len(reads) > 0 else 0
-        sys.stderr.write("duplicated reads removed %d of %d (%.2f) " %
+        logging.debug("duplicated reads removed %d of %d (%.2f) " %
               (removed_duplicated_reads, len(reads), percentage))
 
     return tempFileName
@@ -482,10 +483,10 @@ def run_shell_command(command):
         subprocess.check_call(command, shell=True)
 
     except subprocess.CalledProcessError as error:
-        sys.stderr.write('Error{}\n'.format(error))
+        logging.error('Error{}\n'.format(error))
         exit(1)
     except Exception as error:
-        sys.stderr.write('Error: {}\n'.format(error))
+        logging.error('Error: {}\n'.format(error))
         exit(1)
 
 
@@ -495,6 +496,14 @@ def main(args=None):
     verbose_flag = args.verbose
     global F_gc, N_gc, R_gc
 
+
+    loglevel = logging.INFO
+    logformat = '%(message)s'
+    if args.verbose:
+        loglevel = logging.DEBUG
+        logformat = "%(asctime)s: %(levelname)s - %(message)s"
+
+    logging.basicConfig(stream=sys.stderr, level=loglevel, format=logformat)
     #data = np.loadtxt(args.GCbiasFrequenciesFile.name)
     data = pd.read_csv(args.GCbiasFrequenciesFile.name, sep="\t",index_col=[0,1])
 
@@ -523,7 +532,7 @@ def main(args=None):
                         if F_tmp[x] > 0 and N_tmp[x] > 0 else 1
                         for x in range(len(F_tmp))]
     if verbose_flag:
-        sys.stderr.write(f"max_dup_gc: {max_dup_gc}")
+        logging.debug(f"max_dup_gc: {max_dup_gc}")
     global_vars['max_dup_gc'] = max_dup_gc
 
     tbit = py2bit.open(global_vars['2bit'])
@@ -535,7 +544,7 @@ def main(args=None):
         float(global_vars['total_reads']) / args.effectiveGenomeSize
 
     # apply correction
-    sys.stderr.write("applying correction")
+    logging.info("applying correction")
     # divide the genome in fragments containing about 4e5 reads.
     # This amount of reads takes about 20 seconds
     # to process per core (48 cores, 256 Gb memory)
@@ -551,13 +560,13 @@ def main(args=None):
             mapReduce.getUserRegion(chromSizes, args.region,
                                     max_chunk_size=chunkSize)
 
-    sys.stderr.write("genome partition size for multiprocessing: {}".format(chunkSize))
-    sys.stderr.write("using region {}".format(args.region))
+    logging.info("genome partition size for multiprocessing: {}".format(chunkSize))
+    logging.info("using region {}".format(args.region))
     mp_args = []
     bedGraphStep = args.binSize
     chrNameBitToBam = tbitToBamChrName(list(tbit.chroms().keys()), bam.references)
     chrNameBamToBit = dict([(v, k) for k, v in chrNameBitToBam.items()])
-    sys.stderr.write(f"{chrNameBitToBam}, {chrNameBamToBit}")
+    logging.info(f"{chrNameBitToBam}, {chrNameBamToBit}")
     c = 1
     for chrom, size in chromSizes:
         start = 0 if regionStart == 0 else regionStart
@@ -565,9 +574,8 @@ def main(args=None):
             try:
                 chrNameBamToBit[chrom]
             except KeyError:
-                sys.stderr.write("no sequence information for ")
-                "chromosome {} in 2bit file".format(chrom)
-                sys.stderr.write("Reads in this chromosome will be skipped")
+                logging.debug("no sequence information for chromosome {} in 2bit file".format(chrom))
+                logging.debug("Reads in this chromosome will be skipped")
                 continue
             length = min(size, i + chunkSize)
             mp_args.append((chrom, chrNameBamToBit[chrom], i, length,
@@ -578,7 +586,7 @@ def main(args=None):
 
     if args.correctedFile.name.endswith('bam'):
         if len(mp_args) > 1 and args.numberOfProcessors > 1:
-            sys.stderr.write(("using {} processors for {} "
+            logging.info(("using {} processors for {} "
                    "number of tasks".format(args.numberOfProcessors,
                                             len(mp_args))))
 
@@ -591,7 +599,7 @@ def main(args=None):
             command = "cp {} {}".format(res[0], args.correctedFile.name)
             run_shell_command(command)
         else:
-            sys.stderr.write("concatenating (sorted) intermediate BAMs")
+            logging.info("concatenating (sorted) intermediate BAMs")
             header = pysam.Samfile(res[0])
             of = pysam.Samfile(args.correctedFile.name, "wb", template=header)
             header.close()
@@ -602,7 +610,7 @@ def main(args=None):
                 f.close()
             of.close()
 
-        sys.stderr.write("indexing BAM")
+        logging.info("indexing BAM")
         pysam.index(args.correctedFile.name)
 
         for tempFileName in res:
