@@ -11,6 +11,7 @@ from scipy.stats import poisson
 from scipy import interpolate
 import py2bit
 import sys
+import logging
 import math
 
 from deeptoolsintervals import GTF
@@ -201,7 +202,7 @@ def getPositionsToSample(chrom, start, end, stepSize):
         # remove duplicates
         positions_to_sample = np.unique(np.sort(positions_to_sample))
         if debug:
-            print("sampling increased to {} from {}".format(
+          logging.debug("sampling increased to {} from {}".format(
                 len(positions_to_sample),
                 orig_len))
 
@@ -300,7 +301,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
     startTime = time.time()
 
     if verbose:
-        print("[{:.3f}] computing positions to "
+        logging.debug("[{:.3f}] computing positions to "
               "sample".format(time.time() - startTime))
 
     positions_to_sample = getPositionsToSample(chromNameBit,
@@ -321,7 +322,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
         start_pos = min(positions_to_sample)
         end_pos = max(positions_to_sample)
         if verbose:
-            print("[{:.3f}] caching reads".format(time.time() - startTime))
+            logging.debug("[{:.3f}] caching reads".format(time.time() - startTime))
 
         counts = np.bincount([r.pos - start_pos
                               for r in bam.fetch(chromNameBam, start_pos,
@@ -331,7 +332,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
 
         read_counts = counts[positions_to_sample - min(positions_to_sample)]
         if verbose:
-            print("[{:.3f}] finish caching reads.".format(
+            logging.debug("[{:.3f}] finish caching reads.".format(
                 time.time() - startTime))
 
     countTime = time.time()
@@ -344,9 +345,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
         if i + fragmentLength > tbit.chroms(chromNameBit):
             c_name = tbit.chroms(chromNameBit)
             ifrag = i+fragmentLength
-            print(c_name)
-            print(ifrag)
-            sys.stderr(f"Breaking because chrom length exeeded: {ifrag} > {c_name}")
+            logging.error(f"Breaking because chrom length exeeded: {ifrag} > {c_name}")
             break
 
         try:
@@ -357,7 +356,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
             #print(f"post: {gc}")
         except Exception as detail:
             if verbose:
-                print(detail)
+                logging.exception(detail)
             continue
         #print(gc)
 
@@ -378,7 +377,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
         if verbose:
             if index % 50000 == 0:
                 endTime = time.time()
-                print("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
+                logging.debug("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
                       (multiprocessing.current_process().name,
                        index, index / (endTime - countTime),
                        chromNameBit, start, end, stepSize))
@@ -386,11 +385,11 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
 
     if verbose:
         endTime = time.time()
-        print("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
+        logging.debug("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
               (multiprocessing.current_process().name,
                index, index / (endTime - countTime),
                chromNameBit, start, end, stepSize))
-        print("%s total time %.1f @ %s:%s-%s %s" % (multiprocessing.current_process().name,
+        logging.debug("%s total time %.1f @ %s:%s-%s %s" % (multiprocessing.current_process().name,
                                                     (endTime - startTime), chromNameBit, start, end, stepSize))
     return(subN_gc, subF_gc)
 
@@ -428,7 +427,7 @@ def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
     Fdict = dict()
 
     for fragmentLength in fragmentLengths:
-        print(f"processing fragmentLength: {fragmentLength}")
+        logging.info(f"processing fragmentLength: {fragmentLength}")
         imap_res = mapReduce.mapReduce((stepSize,
                                         fragmentLength, chrNameBamToBit,
                                         verbose),
@@ -603,6 +602,14 @@ def main(args=None):
     else:
         extra_sampling_file = None
 
+    loglevel = logging.INFO
+    logformat = '%(message)s'
+    if args.verbose:
+        loglevel = logging.DEBUG
+        logformat = "%(asctime)s: %(levelname)s - %(message)s"
+
+    logging.basicConfig(stream=sys.stderr, level=loglevel, format=logformat)
+
     global global_vars
     global_vars = {}
     global_vars['2bit'] = args.genome
@@ -653,12 +660,12 @@ def main(args=None):
     global_vars['min_reads'] = min_read_dict
     
     for key in global_vars:
-        print("{}: {}".format(key, global_vars[key]))
+        logging.info("{}: {}".format(key, global_vars[key]))
 
-    print("computing frequencies")
+    logging.info("computing frequencies")
     # the GC of the genome is sampled each stepSize bp.
     stepSize = max(int(global_vars['genome_size'] / args.sampleSize), 1)
-    print("stepSize for genome sampling: {}".format(stepSize))
+    logging.info("stepSize for genome sampling: {}".format(stepSize))
 
     data = tabulateGCcontent(fragmentLengths,
                              chrNameBitToBam, stepSize,
@@ -669,13 +676,13 @@ def main(args=None):
 # change the way data is handled 
     if args.interpolate:
         if args.MeasurementOutput:
-            print("saving measured data")
+            logging.info("saving measured data")
             data.to_csv(args.MeasurementOutput.name, sep="\t")
         r_data = interpolate_ratio(data)
         r_data.to_csv(args.GCbiasFrequenciesFile.name, sep="\t")
     else:
         if args.MeasurementOutput:
-            print("Option MeasurementOutput has no effect. Measured data is saved in GCbiasFrequenciesFile!")
+            logging.info("Option MeasurementOutput has no effect. Measured data is saved in GCbiasFrequenciesFile!")
         r_data = get_ratio(data)
         out_data = data.append(r_data)
         out_data.to_csv(args.GCbiasFrequenciesFile.name, sep="\t")
