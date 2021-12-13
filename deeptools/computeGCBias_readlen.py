@@ -14,6 +14,7 @@ import sys
 import logging
 import math
 
+from csaps import csaps
 from deeptoolsintervals import GTF
 from deeptools.utilities import tbitToBamChrName, getGC_content
 from deeptools import parserCommon, mapReduce
@@ -476,58 +477,35 @@ def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
     #return data
     return data
 
-def interpolate_ratio(df):
+def interpolate_ratio_csaps(df, smooth=None, normalized=False):
     # separate hypothetical read density from measured read density
     N_GC = df.loc["N_gc"]
     F_GC = df.loc["F_gc"]
     
-    # get min and max values
+        # get min and max values
     N_GC_min, N_GC_max =  np.nanmin(N_GC.index.astype("int")), np.nanmax(N_GC.index.astype("int"))
     F_GC_min, F_GC_max =  np.nanmin(F_GC.index.astype("int")), np.nanmax(F_GC.index.astype("int"))
     # sparse grid for hypothetical read density
     N_GC_readlen = N_GC.index.to_numpy(dtype=int)
     N_GC_gc = N_GC.columns.to_numpy(dtype=int)
-    N_xx,N_yy = np.meshgrid(N_GC_gc,N_GC_readlen)
-    
+        
     # sparse grid for measured read density
     F_GC_readlen = F_GC.index.to_numpy(dtype=int)
     F_GC_gc = F_GC.columns.to_numpy(dtype=int)
-    F_xx,F_yy = np.meshgrid(F_GC_gc,F_GC_readlen)
     
-    # determine nans for sparse data
-    N_nans = np.isnan(N_GC.to_numpy())
-    F_nans = np.isnan(F_GC.to_numpy())
-    
-    # determine nans for sparse data
-    N_nans = np.isnan(N_GC.to_numpy())
-    F_nans = np.isnan(F_GC.to_numpy())
-    
-    # Select non_NaN coordinates
-    N_X = N_xx[~N_nans]
-    N_Y = N_yy[~N_nans]
-    F_X = F_xx[~F_nans]
-    F_Y = F_yy[~F_nans]
-    #reshape sparse coordinates to shape (N, 2) in 2d
-    N_sparse_points = np.stack([N_X,N_Y],-1)
-    F_sparse_points = np.stack([F_X,F_Y],-1)
-    
-    N_zz = N_GC.to_numpy()[~N_nans]
-    F_zz = F_GC.to_numpy()[~F_nans]
-    
-    N_f2 = interpolate.RBFInterpolator(N_sparse_points,N_zz,kernel="quintic", smoothing=0.1)
-    F_f2 = interpolate.RBFInterpolator(F_sparse_points,F_zz,kernel="quintic", smoothing=0.1)
+    N_f2 = csaps([N_GC_readlen, N_GC_gc], N_GC.to_numpy(), smooth=smooth, normalizedsmooth=normalized)
+    F_f2 = csaps([F_GC_readlen, F_GC_gc], F_GC.to_numpy(), smooth=smooth, normalizedsmooth=normalized)
     
     scaling_dict = dict()
     for i in np.arange(N_GC_min,N_GC_max+1,1):
-        ref_a,ref_b = np.meshgrid(N_GC.columns.to_numpy(dtype=int),i)
-        ref_dense = np.stack([ref_a.ravel(), ref_b.ravel()], -1)
-        N_tmp = N_f2(ref_dense).reshape(ref_a.shape)
-        F_tmp = F_f2(ref_dense).reshape(ref_a.shape)
+        readlen_tmp = i
+        N_tmp = N_f2([readlen_tmp,N_GC_gc])
+        F_tmp = F_f2([readlen_tmp,F_GC_gc])
         scaling_dict[i] = float(np.sum(N_tmp)) / float(np.sum(F_tmp))
-    
+        
     # get dense data (full GC and readlen range)
-    N_a,N_b = np.meshgrid(N_GC.columns.to_numpy(dtype=int), np.arange(N_GC_min,N_GC_max+1,1))
-    F_a,F_b = np.meshgrid(F_GC.columns.to_numpy(dtype=int), np.arange(F_GC_min,F_GC_max+1,1))
+    N_a,N_b = np.meshgrid(np.arange(N_GC_min,N_GC_max+1,1), N_GC.columns.to_numpy(dtype=int))
+    F_a,F_b = np.meshgrid(np.arange(F_GC_min,N_GC_max+1,1), F_GC.columns.to_numpy(dtype=int))
     # convert to 2D coordinate pairs
     N_dense_points = np.stack([N_a.ravel(), N_b.ravel()], -1)
     F_dense_points = np.stack([F_a.ravel(), F_b.ravel()], -1)
@@ -535,21 +513,20 @@ def interpolate_ratio(df):
     r_list = list()
     f_list = list()
     n_list = list()
-
     for i in N_dense_points:
-        x = i.reshape(1,2)
-        scaling = scaling_dict[x[0][1]]
+        x = i.tolist()
+        scaling = scaling_dict[x[0]]
         if N_f2(x).round() > 0 and F_f2(x).round() > 0:
             ratio = float(F_f2(x).round() / N_f2(x).round() * scaling)
         else:
             ratio = 1
-        f_list.append(float(F_f2(x).round()))
-        n_list.append(float(N_f2(x).round()))
+        f_list.append(float(F_f2(x)))
+        n_list.append(float(N_f2(x)))
         r_list.append(ratio)
     
-    ratio_dense = np.array(r_list).reshape(N_a.shape)
-    F_dense = np.array(f_list).reshape(N_a.shape)
-    N_dense = np.array(n_list).reshape(N_a.shape)
+    ratio_dense = np.array(r_list).reshape(N_a.shape).T
+    F_dense = np.array(f_list).reshape(N_a.shape).T
+    N_dense = np.array(n_list).reshape(N_a.shape).T
     
     # create indices for distributions
     ind_N = pd.MultiIndex.from_product([["N_gc"], np.arange(N_GC_min,N_GC_max+1,1)])
@@ -572,7 +549,6 @@ def get_ratio(df):
     
     scaling_dict = dict()
     for i in N_GC.index:
-        print(i)
         N_tmp = N_GC.loc[i].to_numpy()
         F_tmp = F_GC.loc[i].to_numpy()
         scaling_dict[i] = float(np.sum(N_tmp)) / float(np.sum(F_tmp))
@@ -678,7 +654,7 @@ def main(args=None):
         if args.MeasurementOutput:
             logging.info("saving measured data")
             data.to_csv(args.MeasurementOutput.name, sep="\t")
-        r_data = interpolate_ratio(data)
+        r_data = interpolate_ratio_csaps(data)
         r_data.to_csv(args.GCbiasFrequenciesFile.name, sep="\t")
     else:
         if args.MeasurementOutput:

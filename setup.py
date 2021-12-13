@@ -92,7 +92,8 @@ setup(
         "pyBigWig >= 0.2.1",
         "py2bit >= 0.2.0",
         "plotly >= 4.9",
-        "deeptoolsintervals >= 0.1.8"
+        "deeptoolsintervals >= 0.1.8",
+        "csaps"
     ],
     zip_safe=True,
     cmdclass={'sdist': sdist, 'install': install}
