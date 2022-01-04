@@ -263,14 +263,13 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
     # cache data
     # r.flag & 4 == 0 is to filter unmapped reads that
     # have a genomic position
-    reads = [r for r in bam.fetch(chrNameBam, start, end)
-             if r.pos > start and r.flag & 4 == 0]
+    reads = 0
+    pread = None
 
-    r_index = -1
-    for read in reads:
+    for read in bam.fetch(chrNameBam, start, end):
         if read.pos <= start or read.is_unmapped:
             continue
-        r_index += 1
+        reads += 1
         copies = None
         gc = None
         weight = None
@@ -304,9 +303,9 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             else:
                 copies = 1
         # is this read in the same orientation and position as the previous?
-        if gc and r_index > 0 and read.pos == reads[r_index - 1].pos \
-                and read.is_reverse == reads[r_index - 1].is_reverse \
-                and read.pnext == reads[r_index - 1].pnext:
+        if gc and reads > 1 and read.pos == pread.pos \
+                and read.is_reverse == pread.is_reverse \
+                and read.pnext == pread.pnext:
             read_repetitions += 1
             try:
                 tmp_max_dup_gc = global_vars['max_dup_gc'][r_len][gc]
@@ -364,6 +363,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             matePairs[readName] = {'copies': copies,
                                    'gc': gc}
 
+        pread = read.copy() # else copy.copy(read)
         """
         outfile.write(read)
         """
@@ -394,10 +394,10 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
               "@ {}:{}-{}".format(multiprocessing.current_process().name,
                                   i, i / (endTime - startTime),
                                   chrNameBit, start, end))
-        percentage = float(removed_duplicated_reads) * 100 / len(reads) \
-            if len(reads) > 0 else 0
+        percentage = float(removed_duplicated_reads) * 100 / reads \
+            if reads > 0 else 0
         logging.debug("duplicated reads removed %d of %d (%.2f) " %
-              (removed_duplicated_reads, len(reads), percentage))
+              (removed_duplicated_reads, reads, percentage))
 
     return tempFileName
 
