@@ -8,6 +8,7 @@ import subprocess
 import sys
 import math
 import logging
+import copy
 
 import py2bit
 import pysam
@@ -363,7 +364,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             matePairs[readName] = {'copies': copies,
                                    'gc': gc}
 
-        pread = read.copy() # else copy.copy(read)
+        pread = copy.copy(read)# read.copy() # else copy.copy(read)
         """
         outfile.write(read)
         """
