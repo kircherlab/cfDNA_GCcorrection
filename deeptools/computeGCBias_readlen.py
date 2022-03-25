@@ -180,12 +180,14 @@ def getPositionsToSample(chrom, start, end, stepSize):
     positions_to_sample = np.arange(start, end, stepSize)
 
     if global_vars['filter_out']:
-        filter_out_tree = GTF(global_vars['filter_out'])
+        filter_out_tree = global_vars['filter_out']
+        #filter_out_tree = GTF(global_vars['filter_out']) #moved to main to remove repetition
     else:
         filter_out_tree = None
 
     if global_vars['extra_sampling_file']:
-        extra_tree = GTF(global_vars['extra_sampling_file'])
+        extra_tree = global_vars['extra_sampling_file']
+        #extra_tree = GTF(global_vars['extra_sampling_file'])#moved to main to remove repetition
     else:
         extra_tree = None
 
@@ -309,33 +311,33 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
                                                start, end-fragmentLength, stepSize) # substract fragment length to not exeed chrom
 
     read_counts = []
-    # Optimize IO.
-    # if the sample regions are far apart from each
-    # other is faster to go to each location and fetch
-    # the reads found there.
-    # Otherwise, if the regions to sample are close to
-    # each other, is faster to load all the reads in
-    # a large region into memory and consider only
-    # those falling into the positions to sample.
-    # The following code gets the reads
-    # that are at sampling positions that lie close together
-    if np.mean(np.diff(positions_to_sample)) < 1000:
-        start_pos = min(positions_to_sample)
-        end_pos = max(positions_to_sample)
-        if verbose:
-            logging.debug("[{:.3f}] caching reads".format(time.time() - startTime))
-
-        counts = np.bincount([r.pos - start_pos
-                              for r in bam.fetch(chromNameBam, start_pos,
-                                                 end_pos + 1)
-                              if not r.is_reverse and not r.is_unmapped and r.pos >= start_pos],
-                             minlength=end_pos - start_pos + 2)
-
-        read_counts = counts[positions_to_sample - min(positions_to_sample)]
-        if verbose:
-            logging.debug("[{:.3f}] finish caching reads.".format(
-                time.time() - startTime))
-
+#    # Optimize IO.
+#    # if the sample regions are far apart from each
+#    # other is faster to go to each location and fetch
+#    # the reads found there.
+#    # Otherwise, if the regions to sample are close to
+#    # each other, is faster to load all the reads in
+#    # a large region into memory and consider only
+#    # those falling into the positions to sample.
+#    # The following code gets the reads
+#    # that are at sampling positions that lie close together
+#    if np.mean(np.diff(positions_to_sample)) < 1000:
+#        start_pos = min(positions_to_sample)
+#        end_pos = max(positions_to_sample)
+#        if verbose:
+#            logging.debug("[{:.3f}] caching reads".format(time.time() - startTime))
+#
+#        counts = np.bincount([r.pos - start_pos
+#                              for r in bam.fetch(chromNameBam, start_pos,
+#                                                 end_pos + 1)
+#                              if not r.is_reverse and not r.is_unmapped and r.pos >= start_pos],
+#                             minlength=end_pos - start_pos + 2)
+#
+#        read_counts = counts[positions_to_sample - min(positions_to_sample)]
+#        if verbose:
+#            logging.debug("[{:.3f}] finish caching reads.".format(
+#                time.time() - startTime))
+#
     countTime = time.time()
 
     c = 1
@@ -366,8 +368,8 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
         if len(read_counts) == 0:  # case when no cache was done
             num_reads = len([x.pos for x in bam.fetch(chromNameBam, i, i + 1)
                              if x.is_reverse is False and x.pos == i])
-        else:
-            num_reads = read_counts[index]
+        #else: # else statement only used when cacheing -> not needed anymore after removing caching to reduce memory footprint
+        #    num_reads = read_counts[index]
 
         if num_reads >= global_vars['max_reads'][fragmentLength]:
             peak += 1
@@ -590,8 +592,10 @@ def main(args=None):
     global_vars = {}
     global_vars['2bit'] = args.genome
     global_vars['bam'] = args.bamfile
-    global_vars['filter_out'] = args.blackListFileName
-    global_vars['extra_sampling_file'] = extra_sampling_file
+    if args.blackListFileName:
+        global_vars['filter_out'] = GTF(args.blackListFileName)
+    if args.extraSampling:
+        global_vars['extra_sampling_file'] =  GTF(extra_sampling_file)
 
     tbit = py2bit.open(global_vars['2bit'])
     bam, mapped, unmapped, stats = bamHandler.openBam(global_vars['bam'], returnStats=True, nThreads=args.numberOfProcessors)
