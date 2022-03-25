@@ -380,8 +380,18 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
             # count all reads at position 'i'
             if len(read_counts) == 0:  # case when no cache was done
                 #logging.debug(f"aggregating read_counts")
-                num_reads = len([x.pos for x in bam.fetch(chromNameBam, i, i + 1)
-                                 if x.is_reverse is False and x.pos == i])
+                #num_reads = len([x.pos for x in bam.fetch(chromNameBam, i, i + 1)
+                #                 if x.is_reverse is False and x.pos == i])
+                read_lst=[]
+                for read in bam.fetch("1", i, i + 1):
+                    if not read.is_reverse  and read.pos == i:
+                        if read.is_paired and read.is_proper_pair:
+                            r_len = abs(read.template_length)
+                        else: 
+                            r_len = read.query_length
+                        if r_len == fragmentLength:
+                            read_lst.append(read.pos)
+                num_reads = len(read_lst)
                 #logging.debug("reads counted")
             #else:
             #    num_reads = read_counts[index]
