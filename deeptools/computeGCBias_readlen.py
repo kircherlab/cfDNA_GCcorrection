@@ -448,37 +448,22 @@ def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
     Ndict = dict()
     Fdict = dict()
 
-    for fragmentLength in fragmentLengths:
-        logging.info(f"processing fragmentLength: {fragmentLength}")
-        imap_res = mapReduce.mapReduce((stepSize,
-                                        fragmentLength, chrNameBamToBit,
-                                        verbose),
-                                       tabulateGCcontent_wrapper,
-                                       chromSizes,
-                                       genomeChunkLength=chunkSize,
-                                       numberOfProcessors=numberOfProcessors,
-                                       region=region,
-                                        verbose=verbose)
-    
-        for subN_gc, subF_gc in imap_res:
-            try:
-                F_gc += subF_gc
-                N_gc += subN_gc
-            except NameError:
-                F_gc = subF_gc
-                N_gc = subN_gc
+    logging.debug(f"Parameters: {stepSize},{fragmentLengths},{chrNameBamToBit},{verbose},{tabulateGCcontent_wrapper},{chromSizes},{chunkSize},{numberOfProcessors},{region},{verbose}.")
+    imap_res = mapReduce.mapReduce((stepSize,
+                                    fragmentLengths, chrNameBamToBit,
+                                    verbose),
+                                   tabulateGCcontent_wrapper,
+                                   chromSizes,
+                                   genomeChunkLength=chunkSize,
+                                   numberOfProcessors=numberOfProcessors,
+                                   region=region,
+                                    verbose=verbose)
 
-        if sum(F_gc) == 0:
-            sys.stderr.write(f"No fragments with fragment length: {fragmentLength}")
-            sys.exit("No fragments included in the sampling! Consider decreasing (or maybe increasing) the --sampleSize parameter")
-        #print(str(fragmentLength))
-        #print(N_gc)   
-        Ndict[str(fragmentLength)] = N_gc
-        Fdict[str(fragmentLength)] = F_gc
-        del N_gc
-        del F_gc
-        #print(Ndict)
-    
+    for subN_gc, subF_gc in imap_res:
+        Ndict = {k: Ndict.get(k, 0) + subN_gc.get(k, 0) for k in set(Ndict) | set(subN_gc)}
+        Fdict = {k: Fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(Fdict) | set(subF_gc)}
+        
+   
     # create multi-index dict
     dataDict = {"N_gc":Ndict,"F_gc":Fdict}
     multiindex_dict = {(i,j): dataDict[i][j] 
@@ -487,15 +472,6 @@ def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
     data = pd.DataFrame.from_dict(multiindex_dict, orient="index")
     data.index = pd.MultiIndex.from_tuples(data.index)
     
-    #scaling = float(sum(N_gc)) / float(sum(F_gc))
-
-    #R_gc = np.array([float(F_gc[x]) / N_gc[x] * scaling
-    #                 if N_gc[x] and F_gc[x] > 0 else 1
-    #                 for x in range(len(F_gc))])
-
-    #data = np.transpose(np.vstack((F_gc, N_gc, R_gc)))
-    #return imap_res
-    #return data
     return data
 
 def interpolate_ratio_csaps(df, smooth=None, normalized=False):
