@@ -599,8 +599,12 @@ def main(args=None):
     global_vars['bam'] = args.bamfile
     if args.blackListFileName:
         global_vars['filter_out'] = GTF(args.blackListFileName)
+    else:
+        global_vars['filter_out'] = None
     if args.extraSampling:
         global_vars['extra_sampling_file'] =  GTF(extra_sampling_file)
+    else:
+        global_vars['extra_sampling_file'] = None
 
     tbit = py2bit.open(global_vars['2bit'])
     bam, mapped, unmapped, stats = bamHandler.openBam(global_vars['bam'], returnStats=True, nThreads=args.numberOfProcessors)
