@@ -230,7 +230,7 @@ def tabulateGCcontent_wrapper(args):
 
 
 def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
-                             fragmentLength,
+                             fragmentLengths,
                              chrNameBamToBit, verbose=False):
     r""" given genome regions, the GC content of the genome is tabulated for
     fragments of length 'fragmentLength' each 'stepSize' positions.
@@ -284,117 +284,136 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
     [0 5 1 0]
 
     """
+    logging.debug("Worker is now running")
     #print(f"fragmentLength: {fragmentLength}")
     if start > end:
         raise NameError("start %d bigger that end %d" % (start, end))
-
+    
     chromNameBit = chrNameBamToBit[chromNameBam]
 
-    # array to keep track of the GC from regions of length 'fragmentLength'
-    # from the genome. The index of the array is used to
-    # indicate the gc content. The values inside the
-    # array are counts. Thus, if N_gc[10] = 3, that means
-    # that 3 regions have a gc_content of 10.
-    subN_gc = np.zeros(100 + 1, dtype='int') # change to percent/fraction -> len
-    subF_gc = np.zeros(100 + 1, dtype='int') # change to percent/fraction -> len
+
 
     tbit = py2bit.open(global_vars['2bit'])
     bam = bamHandler.openBam(global_vars['bam'])
     peak = 0
     startTime = time.time()
 
-    if verbose:
-        logging.debug("[{:.3f}] computing positions to "
-              "sample".format(time.time() - startTime))
+    
+    sub_Ndict = dict()
+    sub_Fdict = dict()
+    #if verbose:
+    #    print("[{:.3f}] computing positions to "
+    #          "sample".format(time.time() - startTime))
 
-    positions_to_sample = getPositionsToSample(chromNameBit,
+    for fragmentLength in fragmentLengths:
+        logging.info(f"processing fragmentLength: {fragmentLength}")
+        # array to keep track of the GC from regions of length 'fragmentLength'
+        # from the genome. The index of the array is used to
+        # indicate the gc content. The values inside the
+        # array are counts. Thus, if N_gc[10] = 3, that means
+        # that 3 regions have a gc_content of 10.
+        logging.debug("setting up default arrays")
+        subN_gc = np.zeros(100 + 1, dtype='int') # change to percent/fraction -> len
+        subF_gc = np.zeros(100 + 1, dtype='int') # change to percent/fraction -> len
+        
+        positions_to_sample = getPositionsToSample(chromNameBit,
                                                start, end-fragmentLength, stepSize) # substract fragment length to not exeed chrom
+        logging.debug(len(positions_to_sample))
+        read_counts = []
+        # Optimize IO.
+        # if the sample regions are far apart from each
+        # other is faster to go to each location and fetch
+        # the reads found there.
+        # Otherwise, if the regions to sample are close to
+        # each other, is faster to load all the reads in
+        # a large region into memory and consider only
+        # those falling into the positions to sample.
+        # The following code gets the reads
+        # that are at sampling positions that lie close together
 
-    read_counts = []
-#    # Optimize IO.
-#    # if the sample regions are far apart from each
-#    # other is faster to go to each location and fetch
-#    # the reads found there.
-#    # Otherwise, if the regions to sample are close to
-#    # each other, is faster to load all the reads in
-#    # a large region into memory and consider only
-#    # those falling into the positions to sample.
-#    # The following code gets the reads
-#    # that are at sampling positions that lie close together
-#    if np.mean(np.diff(positions_to_sample)) < 1000:
-#        start_pos = min(positions_to_sample)
-#        end_pos = max(positions_to_sample)
-#        if verbose:
-#            logging.debug("[{:.3f}] caching reads".format(time.time() - startTime))
-#
-#        counts = np.bincount([r.pos - start_pos
-#                              for r in bam.fetch(chromNameBam, start_pos,
-#                                                 end_pos + 1)
-#                              if not r.is_reverse and not r.is_unmapped and r.pos >= start_pos],
-#                             minlength=end_pos - start_pos + 2)
-#
-#        read_counts = counts[positions_to_sample - min(positions_to_sample)]
-#        if verbose:
-#            logging.debug("[{:.3f}] finish caching reads.".format(
-#                time.time() - startTime))
-#
-    countTime = time.time()
+        #    if np.mean(np.diff(positions_to_sample)) < 1000:
+        #        start_pos = min(positions_to_sample)
+        #        end_pos = max(positions_to_sample)
+        #        if verbose:
+        #            print("[{:.3f}] caching reads".format(time.time() - startTime))
+        #
+        #        counts = np.bincount([r.pos - start_pos
+        #                              for r in bam.fetch(chromNameBam, start_pos,
+        #                                                 end_pos + 1)
+        #                              if not r.is_reverse and not r.is_unmapped and r.pos >= start_pos],
+        #                             minlength=end_pos - start_pos + 2)
+        #
+        #        read_counts = counts[positions_to_sample - min(positions_to_sample)]
+        #        if verbose:
+        #            print("[{:.3f}] finish caching reads.".format(
+        #                time.time() - startTime))
+        #
 
-    c = 1
-    for index in range(len(positions_to_sample)):
-        i = positions_to_sample[index]
-        # stop if the end of the chromosome is reached
-        #if i + fragmentLength['median'] > tbit.chroms(chromNameBit):
-        if i + fragmentLength > tbit.chroms(chromNameBit):
-            c_name = tbit.chroms(chromNameBit)
-            ifrag = i+fragmentLength
-            logging.error(f"Breaking because chrom length exeeded: {ifrag} > {c_name}")
-            break
-
-        try:
-            #gc = getGC_content(tbit, chromNameBit, int(i), int(i + fragmentLength['median']), fraction=True)
-            gc = getGC_content(tbit, chromNameBit, int(i), int(i + fragmentLength), fraction=True)
-            #print(f"pre: {gc}")
-            gc = roundGCLenghtBias(gc)
-            #print(f"post: {gc}")
-        except Exception as detail:
+        countTime = time.time()
+    
+        c = 1
+        logging.debug("looping over positions_to_sample")
+        for index in range(len(positions_to_sample)):
+            i = positions_to_sample[index]
+            #logging.debug(f"Position being processed: {i}")
+            # stop if the end of the chromosome is reached
+            #if i + fragmentLength['median'] > tbit.chroms(chromNameBit):
+            if i + fragmentLength > tbit.chroms(chromNameBit):
+                c_name = tbit.chroms(chromNameBit)
+                ifrag = i+fragmentLength
+                logging.error(f"Breaking because chrom length exeeded: {ifrag} > {c_name}")
+                break
+    
+            try:
+                #gc = getGC_content(tbit, chromNameBit, int(i), int(i + fragmentLength['median']), fraction=True)
+                gc = getGC_content(tbit, chromNameBit, int(i), int(i + fragmentLength), fraction=True)
+                #print(f"pre: {gc}")
+                gc = roundGCLenghtBias(gc)
+                #print(f"post: {gc}")
+            except Exception as detail:
+                if verbose:
+                    logging.exception(detail)
+                continue
+            #print(gc)
+    
+    
+            # count all reads at position 'i'
+            if len(read_counts) == 0:  # case when no cache was done
+                #logging.debug(f"aggregating read_counts")
+                num_reads = len([x.pos for x in bam.fetch(chromNameBam, i, i + 1)
+                                 if x.is_reverse is False and x.pos == i])
+                #logging.debug("reads counted")
+            #else:
+            #    num_reads = read_counts[index]
+            #logging.debug(f"num_reads = {num_reads}")
+            if num_reads >= global_vars['max_reads'][fragmentLength]:
+                peak += 1
+                continue
+            #logging.debug("add values to arrays")
+            subN_gc[gc] += 1
+            subF_gc[gc] += num_reads
+            #logging.debug("stuck before verbose")
             if verbose:
-                logging.exception(detail)
-            continue
-        #print(gc)
-
-
-        # count all reads at position 'i'
-        if len(read_counts) == 0:  # case when no cache was done
-            num_reads = len([x.pos for x in bam.fetch(chromNameBam, i, i + 1)
-                             if x.is_reverse is False and x.pos == i])
-        #else: # else statement only used when cacheing -> not needed anymore after removing caching to reduce memory footprint
-        #    num_reads = read_counts[index]
-
-        if num_reads >= global_vars['max_reads'][fragmentLength]:
-            peak += 1
-            continue
-
-        subN_gc[gc] += 1
-        subF_gc[gc] += num_reads
+                if index % 50000 == 0:
+                    endTime = time.time()
+                    logging.debug("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
+                          (multiprocessing.current_process().name,
+                           index, index / (endTime - countTime),
+                           chromNameBit, start, end, stepSize))
+            c += 1
+        logging.debug("finished loop")
+        sub_Ndict[str(fragmentLength)] = subN_gc
+        sub_Fdict[str(fragmentLength)] = subF_gc
         if verbose:
-            if index % 50000 == 0:
-                endTime = time.time()
-                logging.debug("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
-                      (multiprocessing.current_process().name,
-                       index, index / (endTime - countTime),
-                       chromNameBit, start, end, stepSize))
-        c += 1
-
-    if verbose:
-        endTime = time.time()
-        logging.debug("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
-              (multiprocessing.current_process().name,
-               index, index / (endTime - countTime),
-               chromNameBit, start, end, stepSize))
-        logging.debug("%s total time %.1f @ %s:%s-%s %s" % (multiprocessing.current_process().name,
-                                                    (endTime - startTime), chromNameBit, start, end, stepSize))
-    return(subN_gc, subF_gc)
+            endTime = time.time()
+            logging.debug("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
+                  (multiprocessing.current_process().name,
+                   index, index / (endTime - countTime),
+                   chromNameBit, start, end, stepSize))
+            logging.debug("%s total time %.1f @ %s:%s-%s %s" % (multiprocessing.current_process().name,
+                                                        (endTime - startTime), chromNameBit, start, end, stepSize))
+    logging.debug("returning values")
+    return(sub_Ndict, sub_Fdict)
 
 
 def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
