@@ -545,7 +545,7 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False):
     FInt_df = pd.DataFrame(F_dense,columns=N_GC.columns, index=ind_F)
     RInt_df = pd.DataFrame(ratio_dense,columns=N_GC.columns, index=ind_R)
     
-    return NInt_df.append(FInt_df).append(RInt_df)
+    return pd.concat([NInt_df,FInt_df,RInt_df])#NInt_df.append(FInt_df).append(RInt_df)
 
 def get_ratio(df):
     # separate hypothetical read density from measured read density
