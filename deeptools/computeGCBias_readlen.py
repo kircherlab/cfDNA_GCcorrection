@@ -383,7 +383,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
                 #num_reads = len([x.pos for x in bam.fetch(chromNameBam, i, i + 1)
                 #                 if x.is_reverse is False and x.pos == i])
                 read_lst=[]
-                for read in bam.fetch("1", i, i + 1):
+                for read in bam.fetch(chromNameBam, i, i + 1):
                     if not read.is_reverse  and read.pos == i:
                         if read.is_paired and read.is_proper_pair:
                             r_len = abs(read.template_length)
