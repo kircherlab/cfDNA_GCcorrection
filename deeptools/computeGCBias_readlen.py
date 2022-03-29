@@ -481,6 +481,7 @@ def tabulateGCcontent(fragmentLengths, chrNameBitToBam, stepSize,
        for j in dataDict[i].keys()}
     data = pd.DataFrame.from_dict(multiindex_dict, orient="index")
     data.index = pd.MultiIndex.from_tuples(data.index)
+    data.index = data.index.set_levels(data.index.levels[-1].astype(int), level=-1) # set length index to integer for proper sorting
     data.sort_index(inplace=True)
 
     return data
