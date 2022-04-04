@@ -306,7 +306,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
     #          "sample".format(time.time() - startTime))
 
     for fragmentLength in fragmentLengths:
-        logging.info(f"processing fragmentLength: {fragmentLength}")
+        logging.debug(f"processing fragmentLength: {fragmentLength}")
         # array to keep track of the GC from regions of length 'fragmentLength'
         # from the genome. The index of the array is used to
         # indicate the gc content. The values inside the
@@ -651,7 +651,7 @@ def main(args=None):
     global_vars['min_reads'] = min_read_dict
     
     for key in global_vars:
-        logging.info("{}: {}".format(key, global_vars[key]))
+        logging.debug("{}: {}".format(key, global_vars[key]))
 
     logging.info("computing frequencies")
     # the GC of the genome is sampled each stepSize bp.
