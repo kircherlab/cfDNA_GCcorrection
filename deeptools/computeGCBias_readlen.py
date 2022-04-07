@@ -384,10 +384,10 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
                 #                 if x.is_reverse is False and x.pos == i])
                 read_lst=[]
                 for read in bam.fetch(chromNameBam, i, i + 1):
-                    if not read.is_reverse  and read.pos == i:
-                        if read.is_paired and read.is_proper_pair:
+                    if read.pos == i:
+                        if read.is_proper_pair and read.next_reference_start > read.pos:
                             r_len = abs(read.template_length)
-                        else: 
+                        elif not read.is_paired: 
                             r_len = read.query_length
                         if r_len == fragmentLength:
                             read_lst.append(read.pos)
