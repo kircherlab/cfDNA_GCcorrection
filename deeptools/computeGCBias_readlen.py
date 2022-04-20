@@ -384,18 +384,14 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
                 #                 if x.is_reverse is False and x.pos == i])
                 read_lst=[]
                 for read in bam.fetch(chromNameBam, i, i + 1):
+                    r_len = 0
                     if read.pos == i:
                         if read.is_proper_pair and read.next_reference_start > read.pos:
                             r_len = abs(read.template_length)
-                        elif not read.is_proper_pair: 
+                        elif not read.is_paired: 
                             r_len = read.query_length
-                        try:
-                            if r_len == fragmentLength:
-                                read_lst.append(read.pos)
-                        except UnboundLocalError:
-                            print(read)
-                            print(f"something went wrong with this read: \n{read}")
-                            raise
+                        if r_len == fragmentLength:
+                            read_lst.append(read.pos)
                 num_reads = len(read_lst)
                 #logging.debug("reads counted")
             #else:
