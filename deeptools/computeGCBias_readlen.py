@@ -284,7 +284,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
     [0 5 1 0]
 
     """
-    logging.debug("Worker is now running")
+    logging.debug(f"Worker {multiprocessing.current_process().name} is now running")
     #print(f"fragmentLength: {fragmentLength}")
     if start > end:
         raise NameError("start %d bigger that end %d" % (start, end))
@@ -318,7 +318,7 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
         
         positions_to_sample = getPositionsToSample(chromNameBit,
                                                start, end-fragmentLength, stepSize) # substract fragment length to not exeed chrom
-        logging.debug(len(positions_to_sample))
+        logging.debug(f"No. of positions to sample: {len(positions_to_sample)}")
         read_counts = []
         # Optimize IO.
         # if the sample regions are far apart from each
@@ -404,10 +404,10 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
             subN_gc[gc] += 1
             subF_gc[gc] += num_reads
             #logging.debug("stuck before verbose")
-            if verbose:
+            if debug:
                 if index % 50000 == 0:
                     endTime = time.time()
-                    logging.debug("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
+                    logging.debug("%s processing index %d (%.1f per sec) @ %s:%s-%s stepSize: %s" %
                           (multiprocessing.current_process().name,
                            index, index / (endTime - countTime),
                            chromNameBit, start, end, stepSize))
@@ -417,11 +417,11 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
         sub_Fdict[str(fragmentLength)] = subF_gc
         if verbose:
             endTime = time.time()
-            logging.debug("%s processing %d (%.1f per sec) @ %s:%s-%s %s" %
+            logging.debug("%s processed fragmentLenght %d (elapsed time: %.1f sec) @ %s:%s-%s stepSize: %s" %
                   (multiprocessing.current_process().name,
-                   index, index / (endTime - countTime),
+                   fragmentLength, fragmentLength / (endTime - countTime),
                    chromNameBit, start, end, stepSize))
-            logging.debug("%s total time %.1f @ %s:%s-%s %s" % (multiprocessing.current_process().name,
+    logging.debug("%s total time %.1f sec @ %s:%s-%s stepSize: %s" % (multiprocessing.current_process().name,
                                                         (endTime - startTime), chromNameBit, start, end, stepSize))
     logging.debug("returning values")
     return(sub_Ndict, sub_Fdict)
