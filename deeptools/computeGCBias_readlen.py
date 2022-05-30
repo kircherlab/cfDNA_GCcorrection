@@ -277,6 +277,8 @@ def tabulateGCcontent_worker(chromNameBam, start, end, stepSize,
     [0 5 1 0]
 
     """
+    global debug
+
     logging.debug(f"Worker {multiprocessing.current_process().name} is now running")
     if start > end:
         raise NameError("start %d bigger that end %d" % (start, end))
