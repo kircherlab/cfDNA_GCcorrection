@@ -120,6 +120,8 @@ def getRequiredArgs():
                                'underrepresented in the genome.',
                           type=argparse.FileType('r'),
                           metavar='BED file')
+    optional.add_argument('--debug', '-d', dest='debug', action='store_true',
+                          help='Flag: if set, debugging output will be included in commandline output and logging.')
 
     #    plot = parser.add_argument_group('Diagnostic plot options')
     #
@@ -172,6 +174,7 @@ def getPositionsToSample(chrom, start, end, stepSize):
     If a filter out tree is given, then from positions to sample
     those regions are cleaned
     """
+    global debug
     positions_to_sample = np.arange(start, end, stepSize)
 
     if global_vars['filter_out']:
@@ -506,7 +509,6 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False):
 
     # get dense data (full GC and readlen range)
     N_a, N_b = np.meshgrid(np.arange(N_GC_min, N_GC_max + 1, 1), N_GC.columns.to_numpy(dtype=int))
-    F_a, F_b = np.meshgrid(np.arange(F_GC_min, N_GC_max + 1, 1), F_GC.columns.to_numpy(dtype=int))
     # convert to 2D coordinate pairs
     N_dense_points = np.stack([N_a.ravel(), N_b.ravel()], -1)
     # F_dense_points = np.stack([F_a.ravel(), F_b.ravel()], -1)  # variable not used
@@ -573,7 +575,11 @@ def get_ratio(df):
 
 
 def main(args=None):
+    global global_vars, debug
+
     args = parse_arguments().parse_args(args)
+
+    debug = args.debug
 
     if args.extraSampling:
         extra_sampling_file = args.extraSampling.name
@@ -588,8 +594,7 @@ def main(args=None):
         log_format = "%(asctime)s: %(levelname)s - %(message)s"
 
     logging.basicConfig(stream=sys.stderr, level=loglevel, format=log_format)
-
-    global global_vars
+    global_vars = dict()
     global_vars['2bit'] = args.genome
     global_vars['bam'] = args.bamfile
     if args.blackListFileName:
@@ -604,7 +609,6 @@ def main(args=None):
     tbit = py2bit.open(global_vars['2bit'])
     bam, mapped, unmapped, stats = bamHandler.openBam(global_vars['bam'], returnStats=True,
                                                       nThreads=args.numberOfProcessors)
-
     if args.interpolate:
         length_step = args.lengthStep
     else:

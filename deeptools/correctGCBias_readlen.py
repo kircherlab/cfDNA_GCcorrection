@@ -33,7 +33,7 @@ F_gc = N_gc = R_gc = R_gc_min = R_gc_max = debug = verbose_flag = None
 
 
 def parse_arguments():
-    parentParser = parserCommon.getParentArgParse(binSize=True, blackList=False)
+    parentParser = parserCommon.getParentArgParse(binSize=True, blackList=False)  # binSize = 50 per default
     requiredArgs = getRequiredArgs()
     parser = argparse.ArgumentParser(
         parents=[requiredArgs, parentParser],
@@ -117,6 +117,8 @@ def getRequiredArgs():
                           action='store_true')
     optional.add_argument("--help", "-h", action="help",
                           help="show this help message and exit")
+    optional.add_argument('--verbose', '-v', dest='verbose_flag', action='store_true',
+                          help='Flag: if set, additional output will be included in commandline output and logging.')
     return parser
 
 
@@ -207,12 +209,11 @@ def writeCorrectedSam_wrapper(args):
     return writeCorrectedSam_worker(*args)
 
 
-def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
-                             tag_but_not_change_number=False,
-                             verbose=True):
+def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end, tag_but_not_change_number=True, verbose=False):
     r"""
     Writes a BAM file, deleting and adding some reads in order to compensate
-    for the GC bias. **This is a stochastic method.**
+    for the GC bias, if tag_but_not_change_number is False. **This is a stochastic method.**
+    Otherwise, all alignments get a YC and a YG tag and are written to a new file containing the same amount of alns.
     >>> np.random.seed(1)
     >>> test = Tester()
     >>> args = test.testWriteCorrectedSam()
@@ -245,7 +246,6 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
     >>> res = os.remove(tempFile+".bai")
     """
     global R_gc
-    fragmentLength = len(R_gc) - 1  # is this needed anymore?
 
     if verbose:
         logging.debug("Sam for %s %s %s " % (chrNameBit, start, end))
@@ -287,7 +287,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             # by some filtering
             gc = getReadGCcontent(tbit, read,  # fragmentLength, not needed anymore
                                   chrNameBit)
-            if verbose_flag:
+            if verbose:
                 logging.debug(f"writeCorrectedSam_worker; gc:{gc}")
 
             if gc:
@@ -327,7 +327,6 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
         # It turns out that the "with_value_type" option only started working in
         # pysam-0.8.4, so we can't reliably add tags on earlier versions without
         # potentially creating BAM files that break HTSJDK/IGV/etc.
-
         readTag = read.get_tags(with_value_type=True)
         replace_tags = False
         if len(readTag) > 0:
@@ -337,7 +336,6 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                 replace_tags = True
         else:
             replace_tags = True
-
         if gc:
             gc_for_tag = gc  # int(100 * np.round(float(gc) / fragmentLength,
             #                   decimals=2))
@@ -356,7 +354,6 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
                 )
         else:
             gc_for_tag = -1
-
         readTag.append(('YG', gc_for_tag, "i"))
         if replace_tags:
             read.set_tags(readTag)
@@ -374,14 +371,12 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
         if tag_but_not_change_number:
             outfile.write(read)
             continue
-
         for numCop in range(1, copies + 1):
             # the read has to be renamed such that newly
             # formed pairs will match
             if numCop > 1:
                 read.qname = readName + "_%d" % numCop
             outfile.write(read)
-
         if verbose:
             if i % 500000 == 0 and i > 0:
                 endTime = time.time()
@@ -398,7 +393,6 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             if reads > 0 else 0
         logging.debug("duplicated reads removed %d of %d (%.2f) " %
                       (removed_duplicated_reads, reads, percentage))
-
     return tempFileName
 
 
@@ -491,7 +485,7 @@ def run_shell_command(command):
 
 
 def main(args=None):
-    global verbose_flag, F_gc, N_gc, R_gc
+    global verbose_flag, F_gc, N_gc, R_gc, global_vars
 
     args = process_args(args)
     verbose_flag = args.verbose
@@ -512,8 +506,7 @@ def main(args=None):
 
     N_GC_min, N_GC_max = np.nanmin(N_gc.index), np.nanmax(N_gc.index)
 
-    global global_vars
-    global_vars = {}
+    global_vars = dict()
     global_vars['2bit'] = args.genome
     global_vars['bam'] = args.bamfile
 
@@ -561,28 +554,25 @@ def main(args=None):
     logging.info(f"genome partition size for multiprocessing: {chunkSize}")
     logging.info(f"using region {args.region}")
     mp_args = []
-    bedGraphStep = args.binSize
+
     chrNameBitToBam = tbitToBamChrName(list(tbit.chroms().keys()), bam.references)
     chrNameBamToBit = dict([(v, k) for k, v in chrNameBitToBam.items()])
     logging.info(f"{chrNameBitToBam}, {chrNameBamToBit}")
     c = 1
-    for chrom, size in chromSizes:
-        start = 0 if regionStart == 0 else regionStart
-        for i in range(start, size, chunkSize):
-            try:
-                chrNameBamToBit[chrom]
-            except KeyError:
-                logging.debug(f"no sequence information for chromosome {chrom} in 2bit file")
-                logging.debug("Reads in this chromosome will be skipped")
-                continue
-            length = min(size, i + chunkSize)
-            mp_args.append((chrom, chrNameBamToBit[chrom], i, length,
-                            bedGraphStep, args.weight_only))
-            c += 1
-
     pool = multiprocessing.Pool(args.numberOfProcessors)
-
     if args.correctedFile.name.endswith('bam'):
+        for chrom, size in chromSizes:
+            start = 0 if regionStart == 0 else regionStart
+            for i in range(start, size, chunkSize):
+                try:
+                    chrNameBamToBit[chrom]
+                except KeyError:
+                    logging.debug(f"no sequence information for chromosome {chrom} in 2bit file")
+                    logging.debug("Reads in this chromosome will be skipped")
+                    continue
+                chunk_end = min(size, i + chunkSize)
+                mp_args.append((chrom, chrNameBamToBit[chrom], i, chunk_end, args.weight_only, verbose_flag))
+                c += 1
         if len(mp_args) > 1 and args.numberOfProcessors > 1:
             logging.info(f"using {args.numberOfProcessors} processors for {len(mp_args)} number of tasks")
 
@@ -606,12 +596,26 @@ def main(args=None):
             of.close()
 
         logging.info("indexing BAM")
-        pysam.index(args.correctedFile.name)  # useable through pysam dispatcher
+        pysam.index(args.correctedFile.name)  # usable through pysam dispatcher
 
         for tempFileName in res:
             os.remove(tempFileName)
 
     if args.correctedFile.name.endswith('bg') or args.correctedFile.name.endswith('bw'):
+        bedGraphStep = args.binSize  # 50 per default
+        for chrom, size in chromSizes:
+            start = 0 if regionStart == 0 else regionStart
+            for i in range(start, size, chunkSize):
+                try:
+                    chrNameBamToBit[chrom]
+                except KeyError:
+                    logging.debug(f"no sequence information for chromosome {chrom} in 2bit file")
+                    logging.debug("Reads in this chromosome will be skipped")
+                    continue
+                segment_end = min(size, i + bedGraphStep)
+                mp_args.append((chrom, chrNameBamToBit[chrom], i, segment_end, bedGraphStep))
+                c += 1
+
         if len(mp_args) > 1 and args.numberOfProcessors > 1:
             res = pool.map_async(writeCorrected_wrapper, mp_args).get(9999999)
         else:
@@ -633,7 +637,6 @@ def main(args=None):
 
 class Tester:
     def __init__(self):
-        import os
         global debug, global_vars
         self.root = os.path.dirname(os.path.abspath(__file__)) + "/test/test_corrGC/"
         self.tbitFile = self.root + "sequence.2bit"
