@@ -22,8 +22,13 @@ from deeptools.bamHandler import openBam
 
 old_settings = np.seterr(all='ignore')
 
+# define globals
+R_gc = R_gc_min = R_gc_max = F_gc = N_gc = None
+debug = 0
+global_vars = {}
 
-def parse_arguments(args=None):
+
+def parse_arguments():
     parentParser = parserCommon.getParentArgParse(binSize=True, blackList=False)
     requiredArgs = getRequiredArgs()
     parser = argparse.ArgumentParser(
@@ -177,7 +182,7 @@ def writeCorrected_worker(chrNameBam, chrNameBit, start, end, step):
     ['chr2L\t200\t225\t31.6\n', 'chr2L\t225\t250\t33.8\n', 'chr2L\t250\t275\t37.9\n', 'chr2L\t275\t300\t40.9\n']
     >>> os.remove(tempFile)
     """
-    global R_gc
+    global R_gc, debug
     fragmentLength = len(R_gc) - 1
 
     cvg_corr = np.zeros(end - start)
@@ -291,10 +296,7 @@ def writeCorrectedSam_wrapper(args):
     return writeCorrectedSam_worker(*args)
 
 
-def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
-                             step=None,
-                             tag_but_not_change_number=False,
-                             verbose=True):
+def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end, tag_but_not_change_number=False, verbose=True):
     r"""
     Writes a BAM file, deleting and adding some reads in order to compensate
     for the GC bias. **This is a stochastic method.**
@@ -408,15 +410,13 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             replace_tags = True
 
         if gc:
-            GC = int(100 * np.round(float(gc) / fragmentLength,
-                                    decimals=2))
-            readTag.append(
-                ('YC', float(round(float(1) / R_gc[gc], 2)), "f"))
+            gc_tag = int(100 * np.round(float(gc) / fragmentLength, decimals=2))
+            readTag.append(('YC', float(round(float(1) / R_gc[gc], 2)), "f"))
             readTag.append(('YN', copies, "i"))
         else:
-            GC = -1
+            gc_tag = -1
 
-        readTag.append(('YG', GC, "i"))
+        readTag.append(('YG', gc_tag, "i"))
         if replace_tags:
             read.set_tags(readTag)
 
@@ -437,7 +437,7 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end,
             # the read has to be renamed such that newly
             # formed pairs will match
             if numCop > 1:
-                read.qname = readName + "_%d" % (numCop)
+                read.qname = readName + "_%d" % numCop
             outfile.write(read)
 
         if verbose:
@@ -554,7 +554,7 @@ def run_shell_command(command):
 
 def main(args=None):
     args = process_args(args)
-    global F_gc, N_gc, R_gc
+    global F_gc, N_gc, R_gc, global_vars
 
     data = np.loadtxt(args.GCbiasFrequenciesFile.name)
 
@@ -562,8 +562,7 @@ def main(args=None):
     N_gc = data[:, 1]
     R_gc = data[:, 2]
 
-    global global_vars
-    global_vars = {}
+    global_vars = dict()
     global_vars['2bit'] = args.genome
     global_vars['bam'] = args.bamfile
 
@@ -621,7 +620,7 @@ def main(args=None):
                 continue
             length = min(size, i + chunkSize)
             mp_args.append((chrom, chrNameBamToBit[chrom], i, length,
-                            bedGraphStep,args.weight_only))
+                            bedGraphStep, args.weight_only))
             c += 1
 
     pool = multiprocessing.Pool(args.numberOfProcessors)
@@ -681,9 +680,10 @@ def main(args=None):
             writeBedGraph.bedGraphToBigWig(chromSizes, res, oname)
 
 
-class Tester():
+class Tester:
     def __init__(self):
-        import os
+        global debug, global_vars
+
         self.root = os.path.dirname(os.path.abspath(__file__)) + "/test/test_corrGC/"
         self.tbitFile = self.root + "sequence.2bit"
         self.bamFile = self.root + "test.bam"
@@ -691,15 +691,13 @@ class Tester():
         self.chrNameBit = 'chr2L'
         bam, mapped, unmapped, stats = openBam(self.bamFile, returnStats=True)
         tbit = py2bit.open(self.tbitFile)
-        global debug
+
         debug = 0
-        global global_vars
         global_vars = {'2bit': self.tbitFile,
                        'bam': self.bamFile,
                        'filter_out': None,
                        'extra_sampling_file': None,
                        'max_reads': 5,
-                       'min_reads': 0,
                        'min_reads': 0,
                        'reads_per_bp': 0.3,
                        'total_reads': mapped,
@@ -735,12 +733,10 @@ class Tester():
     def testWriteCorrectedSam_paired(self):
         """ prepare arguments for test.
         """
-        global R_gc, R_gc_min, R_gc_max
+        global R_gc, R_gc_min, R_gc_max, global_vars
         R_gc = np.loadtxt(self.root + "R_gc_paired.txt")
-
         start = 0
         end = 500
-        global global_vars
         global_vars['bam'] = self.root + "paired.bam"
         return 'chr2L', 'chr2L', start, end
 
