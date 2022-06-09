@@ -117,8 +117,6 @@ def getRequiredArgs():
                           action='store_true')
     optional.add_argument("--help", "-h", action="help",
                           help="show this help message and exit")
-    optional.add_argument('--verbose', '-v', dest='verbose_flag', action='store_true',
-                          help='Flag: if set, additional output will be included in commandline output and logging.')
     return parser
 
 
