@@ -489,6 +489,7 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False):
     # get min and max values
     N_GC_min, N_GC_max = np.nanmin(N_GC.index.astype("int")), np.nanmax(N_GC.index.astype("int"))
     F_GC_min, F_GC_max = np.nanmin(F_GC.index.astype("int")), np.nanmax(F_GC.index.astype("int"))
+
     # sparse grid for hypothetical read density
     N_GC_readlen = N_GC.index.to_numpy(dtype=int)
     N_GC_gc = N_GC.columns.to_numpy(dtype=int)
@@ -505,13 +506,13 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False):
         readlen_tmp = i
         N_tmp = N_f2([readlen_tmp, N_GC_gc])
         F_tmp = F_f2([readlen_tmp, F_GC_gc])
-        scaling_dict[i] = float(np.sum(N_tmp)) / float(np.sum(F_tmp))
+        scaling_dict[i] = int(np.sum(N_tmp) / np.sum(F_tmp))
 
     # get dense data (full GC and readlen range)
     N_a, N_b = np.meshgrid(np.arange(N_GC_min, N_GC_max + 1, 1), N_GC.columns.to_numpy(dtype=int))
+    F_a, F_b = np.meshgrid(np.arange(F_GC_min, N_GC_max + 1, 1), F_GC.columns.to_numpy(dtype=int))
     # convert to 2D coordinate pairs
     N_dense_points = np.stack([N_a.ravel(), N_b.ravel()], -1)
-    # F_dense_points = np.stack([F_a.ravel(), F_b.ravel()], -1)  # variable not used
 
     r_list = list()
     f_list = list()
@@ -519,12 +520,12 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False):
     for i in N_dense_points:
         x = i.tolist()
         scaling = scaling_dict[x[0]]
-        if N_f2(x).round() > 0 and F_f2(x).round() > 0:
-            ratio = float(F_f2(x).round() / N_f2(x).round() * scaling)
+        if (N_f2(x)).astype(int) > 0 and (F_f2(x)).astype(int) > 0:
+            ratio = (int(F_f2(x)) / int(N_f2(x)) * scaling)
         else:
             ratio = 1
-        f_list.append(float(F_f2(x)))
-        n_list.append(float(N_f2(x)))
+        f_list.append(int(F_f2(x)))
+        n_list.append(int(N_f2(x)))
         r_list.append(ratio)
 
     ratio_dense = np.array(r_list).reshape(N_a.shape).T
