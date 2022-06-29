@@ -2,7 +2,7 @@
 #-*- coding: utf-8 -*-
 
 import cfDNA_GCcorrection.misc
-from cfDNA_GCcorrection.correctGCBias_readlen import main
+from cfDNA_GCcorrection.cfDNA_GCcorrection_list_tools import main
 import sys
 
 if __name__ == "__main__":

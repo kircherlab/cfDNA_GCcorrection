@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 #-*- coding: utf-8 -*-
 
-import deeptools.misc
-from deeptools.computeGCBias_readlen import main
+import cfDNA_GCcorrection.misc
+from cfDNA_GCcorrection.computeGCBias_readlen import main
 import sys
 
 if __name__ == "__main__":

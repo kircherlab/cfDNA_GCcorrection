@@ -1,8 +1,7 @@
 include *.txt
 include README.md
 exclude examples/*
-exclude deepTools.egg-info/*
-include scripts/*
-exclude deeptools/test/*
+exclude cfDNA_GCcorrection.egg-info/*
+exclude cfDNA_GCcorrection/test/*
 exclude galaxy/*
 exclude gallery/*

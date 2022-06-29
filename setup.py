@@ -60,24 +60,16 @@ def openREADME():
 
 
 setup(
-    name='deepTools',
+    name='cfDNA_GCcorrection',
     version=get_version(),
-    author='Fidel Ramirez,  Devon P Ryan, Björn Grüning, Friederike Dündar, Sarah Diehl,'
-    ' Vivek Bhardwaj, Fabian Kilpert, Andreas S Richter, Steffen Heyne, Thomas Manke',
-    author_email='dpryan79@gmail.com',
+    author='Sebastian Röner',
+    author_email='sebastian.roener@bih-charite.de',
     packages=find_packages(),
-    scripts=['bin/bamCompare', 'bin/bamCoverage', 'bin/multiBamSummary',
-             'bin/plotHeatmap', 'bin/plotFingerprint', 'bin/estimateScaleFactor',
-             'bin/bamPEFragmentSize', 'bin/computeMatrix', 'bin/plotProfile',
-             'bin/computeGCBias', 'bin/correctGCBias', 'bin/computeGCBias_readlen',
-             'bin/correctGCBias_readlen', 'bin/multiBigwigSummary', 'bin/bigwigCompare',
-             'bin/plotCoverage', 'bin/plotPCA', 'bin/plotCorrelation',
-             'bin/plotEnrichment', 'bin/deeptools', 'bin/computeMatrixOperations',
-             'bin/estimateReadFiltering', 'bin/alignmentSieve', 'bin/computeGCBias_readlen'],
+    scripts=['bin/computeGCBias_readlen','bin/correctGCBias_readlen'],
     include_package_data=True,
-    url='http://pypi.python.org/pypi/deepTools/',
+    url='http://pypi.python.org/pypi/cfDNA_GCcorrection/',
     license='LICENSE.txt',
-    description='Useful tools for exploring deep sequencing data ',
+    description='Tools for correcting GC bias in cell-free DNA samples',
     long_description=openREADME(),
     classifiers=[
         'Intended Audience :: Science/Research',
