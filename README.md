@@ -18,25 +18,9 @@ You can install cfDNA_GCcorrection on command line (linux/mac) by cloning this g
 ``` bash
 $ git clone https://github.com/kircherlab/cfDNA_GCcorrection.git
 $ cd cfDNA_GCcorrection
-$ python setup.py install
+$ pip install -e .
 ```
 
-By default, the script will install the python library and executable
-codes globally, which means you need to be root or administrator of
-the machine to complete the installation. If you need to
-provide a nonstandard install prefix, or any other nonstandard
-options, you can provide many command line options to the install
-script.
-
-	$ python setup.py --help
-
-For example, to install under a specific location use:
-
-	$ python setup.py install --prefix <target directory>
-
-To install into your home directory, use:
-
-	$ python setup.py install --user
 
 
 ## Acknowledgment
