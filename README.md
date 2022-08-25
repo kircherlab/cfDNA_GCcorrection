@@ -16,12 +16,12 @@ Under construction
 You can install cfDNA_GCcorrection on command line (linux/mac) by cloning this git repository :
 
 ``` bash
-$ git clone https://github.com/kircherlab/cfDNA_GCcorrection.git
-$ cd cfDNA_GCcorrection
-$ pip install -e .
+git clone https://github.com/kircherlab/cfDNA_GCcorrection.git
+cd cfDNA_GCcorrection
+pip install -e .
 ```
 
-
+**note:** pybedtools needs a locally installed version of bedtools! Please install it by other means. See the official [documentation](https://bedtools.readthedocs.io/en/latest/content/installation.html).
 
 ## Acknowledgment
 
