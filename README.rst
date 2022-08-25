@@ -1,5 +1,5 @@
 ======================================================================
-deepTools
+cfDNA_GCcorrection
 ======================================================================
 
 User-friendly tools for exploring deep-sequencing data
