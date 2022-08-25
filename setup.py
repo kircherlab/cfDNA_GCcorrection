@@ -85,7 +85,10 @@ setup(
         "py2bit >= 0.2.0",
         "plotly >= 4.9",
         "deeptoolsintervals >= 0.1.8",
-        "csaps"
+        "csaps",
+        "ray",
+        "pybedtools",
+        "click"
     ],
     zip_safe=True,
     cmdclass={'sdist': sdist, 'install': install}
