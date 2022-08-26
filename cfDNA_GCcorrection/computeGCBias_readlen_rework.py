@@ -6,6 +6,7 @@ import logging
 import math
 import sys
 import time
+import os
 from collections import defaultdict
 from ctypes.wintypes import INT
 from functools import partial
@@ -165,7 +166,7 @@ def get_F_GC(chrom, start, end, bam, reference, verbose=False):
 ###### worker definition for ray ######
 
 
-@ray.remote
+@ray.remote(num_cpus=1)
 def tabulateGCcontent_worker(
     chrom,
     start,
@@ -238,7 +239,10 @@ def tabulateGCcontent(
     # chunkSize = int(min(2e6, 4e5 / global_vars['reads_per_bp']))
     # chrom_sizes = [(k, v) for k, v in chrom_sizes if k in list(chrNameBamToBit.keys())]
 
-    ray.init(num_cpus=num_cpus)
+    ray.init(num_cpus=num_cpus, _temp_dir=os.environ["TMPDIR"])
+
+    if verbose:
+        print(ray.cluster_resources())
 
     futures = [
         tabulateGCcontent_worker.remote(**{**region, **param_dict})
