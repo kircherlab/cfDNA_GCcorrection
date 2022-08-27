@@ -4,9 +4,11 @@
 import argparse
 import logging
 import math
+import multiprocessing
+import os
+import random
 import sys
 import time
-import os
 from collections import defaultdict
 from ctypes.wintypes import INT
 from functools import partial
@@ -121,7 +123,11 @@ def get_F_GC(chrom, start, end, bam, reference, verbose=False):
     sub_Fdict = defaultdict(lambda: np.zeros(100 + 1, dtype="int"))
     for read in bam.fetch(chrom, start, end):
         r_len = 0
-        if read.reference_start >= start and read.reference_end is not None and read.reference_end <= end: # check for none, some reads are faulty and return None!
+        if (
+            read.reference_start >= start
+            and read.reference_end is not None
+            and read.reference_end <= end
+        ):  # check for none, some reads are faulty and return None!
             if (
                 read.is_proper_pair and read.next_reference_start > read.reference_start
             ):  # is proper pair and only counted once! is this the same as read.mate_is_reverse?
@@ -158,7 +164,7 @@ def get_F_GC(chrom, start, end, bam, reference, verbose=False):
                 sub_Fdict[str(r_len)][gc] += 1
             else:
                 continue
-        else: 
+        else:
             continue
     return dict(sub_Fdict)
 
@@ -166,7 +172,12 @@ def get_F_GC(chrom, start, end, bam, reference, verbose=False):
 ###### worker definition for ray ######
 
 
-@ray.remote(num_cpus=1)
+def tabulateGCcontent_wrapper(args):
+    #    print("ARGS:")
+    #    print(args)
+    return tabulateGCcontent_worker(**args)
+
+
 def tabulateGCcontent_worker(
     chrom,
     start,
@@ -176,7 +187,7 @@ def tabulateGCcontent_worker(
     chrNameBamToBit=None,
     verbose=False,
 ):
-    #if verbose:
+    # if verbose:
     #    passed_args=locals()
     #    print(passed_args)
 
@@ -184,7 +195,7 @@ def tabulateGCcontent_worker(
     bam = bamHandler.openBam(global_vars["bam"])
 
     if not fragment_lengths:
-        #print("no fragment lengths specified, using measured")
+        # print("no fragment lengths specified, using measured")
         sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit)
         frag_lens = tuple(int(x) for x in sub_Fdict.keys())
         sub_Ndict = get_N_GC(
@@ -198,7 +209,54 @@ def tabulateGCcontent_worker(
         )
 
     else:
-        #print(f"using fragment lengths: {fragment_lengths}")
+        # print(f"using fragment lengths: {fragment_lengths}")
+        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit)
+        sub_Ndict = get_N_GC(
+            chrom,
+            start,
+            end,
+            reference=tbit,
+            steps=stepSize,
+            fragment_lengths=fragment_lengths,
+            verbose=verbose,
+        )
+    logging.debug("returning values")
+    return sub_Ndict, sub_Fdict
+
+
+@ray.remote(num_cpus=1)
+def tabulateGCcontent_worker_ray(
+    chrom,
+    start,
+    end,
+    stepSize=1,
+    fragment_lengths=None,
+    chrNameBamToBit=None,
+    verbose=False,
+):
+    # if verbose:
+    #    passed_args=locals()
+    #    print(passed_args)
+
+    tbit = py2bit.open(global_vars["2bit"])
+    bam = bamHandler.openBam(global_vars["bam"])
+
+    if not fragment_lengths:
+        # print("no fragment lengths specified, using measured")
+        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit)
+        frag_lens = tuple(int(x) for x in sub_Fdict.keys())
+        sub_Ndict = get_N_GC(
+            chrom,
+            start,
+            end,
+            reference=tbit,
+            steps=stepSize,
+            fragment_lengths=frag_lens,
+            verbose=verbose,
+        )
+
+    else:
+        # print(f"using fragment lengths: {fragment_lengths}")
         sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit)
         sub_Ndict = get_N_GC(
             chrom,
@@ -222,6 +280,7 @@ def tabulateGCcontent(
     stepSize=1,
     fragment_lengths=None,
     chrNameBamToBit=None,
+    mp_type="MP",
     verbose=False,
 ):
 
@@ -233,22 +292,42 @@ def tabulateGCcontent(
         "chrNameBamToBit": chrNameBamToBit,
         "verbose": verbose,
     }
+
     # chrNameBamToBit = dict([(v, k) for k, v in chr_name_bit_to_bam.items()])
     # print(chr_name_bit_to_bam)
     # print(chrNameBamToBit)
     # chunkSize = int(min(2e6, 4e5 / global_vars['reads_per_bp']))
     # chrom_sizes = [(k, v) for k, v in chrom_sizes if k in list(chrNameBamToBit.keys())]
 
-    ray.init(num_cpus=num_cpus, _temp_dir=os.environ["TMPDIR"])
+    if mp_type.lower() == "mp":
+        print("Using python Multiprocessing!")
+        TASKS = [{**region, **param_dict} for region in regions]
+        if len(TASKS) > 1 and num_cpus > 1:
+            if verbose:
+                print(
+                    (
+                        "using {} processors for {} "
+                        "number of tasks".format(num_cpus, len(TASKS))
+                    )
+                )
+            random.shuffle(TASKS)
+            pool = multiprocessing.Pool(num_cpus)
+            imap_res = pool.map_async(tabulateGCcontent_wrapper, TASKS).get(9999999)
+            pool.close()
+            pool.join()
+        else:
+            imap_res = list(map(tabulateGCcontent_wrapper, TASKS))
+    elif mp_type.lower() == "ray":
+        ray.init(num_cpus=num_cpus, _temp_dir=os.environ["TMPDIR"])
 
-    if verbose:
-        print(ray.cluster_resources())
+        if verbose:
+            print(ray.cluster_resources())
 
-    futures = [
-        tabulateGCcontent_worker.remote(**{**region, **param_dict})
-        for region in regions
-    ]
-    imap_res = ray.get(futures)
+        futures = [
+            tabulateGCcontent_worker.remote(**{**region, **param_dict})
+            for region in regions
+        ]
+        imap_res = ray.get(futures)
 
     ndict = {
         str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths
@@ -474,7 +553,7 @@ def get_ratio(df):
     "-fstep",
     "lengthStep",
     default=1,
-    #show_default=True,
+    # show_default=True,
     type=click.INT,
     help="""Step size for fragment lenghts between minimum and maximum fragment length.
             Will be ignored if interpolate is deactivated.""",
@@ -533,6 +612,15 @@ def get_ratio(df):
     --region chr10:456700-891000 or
     --region 10:456700-891000.""",
 )
+@click.option(
+    "--mp_backend",
+    "-mp",
+    "mp_type",
+    type=click.Choice(["MP", "Ray"], case_sensitive=False),
+    default="MP",
+    show_default=True,
+    help="Specifies the multiprocessing backend. MP = python multiprocessing, Ray for ray. (Be careful, the latter is currently under development!)",
+)
 @click.option("-v", "--verbose", "verbose", is_flag=True, help="Enables verbose mode")
 @click.option("--debug", "debug", is_flag=True, help="Enables debug mode")
 def main(
@@ -551,9 +639,10 @@ def main(
     standard_chroms,
     verbose,
     debug,
+    mp_type,
 ):
 
-    #if debug:
+    # if debug:
     #    passed_args=locals()
     #    print(passed_args)
 
@@ -660,7 +749,10 @@ def main(
     # logging.info(f"stepSize for genome sampling: {step_size}")
 
     data = tabulateGCcontent(
-        num_cpus=num_cpus, regions=regions, fragment_lengths=fragment_lengths
+        num_cpus=num_cpus,
+        regions=regions,
+        fragment_lengths=fragment_lengths,
+        mp_type=mp_type,
     )
     # change the way data is handled
     if interpolate:
