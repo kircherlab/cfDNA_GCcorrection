@@ -324,7 +324,7 @@ def tabulateGCcontent(
             print(ray.cluster_resources())
 
         futures = [
-            tabulateGCcontent_worker.remote(**{**region, **param_dict})
+            tabulateGCcontent_worker_ray.remote(**{**region, **param_dict})
             for region in regions
         ]
         imap_res = ray.get(futures)
