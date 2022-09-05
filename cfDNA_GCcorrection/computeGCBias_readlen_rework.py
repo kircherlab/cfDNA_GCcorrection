@@ -35,13 +35,12 @@ STANDARD_CHROMOSOMES = (
     + ["chrX", "chrY"]
 )
 
-rng = np.random.default_rng()
 
 ###### define functions doing the work ######
 
 
 def get_regions(
-    genome, bam, nregions=10e6, windowsize=1000, blacklist=None, region=None
+    genome, bam, nregions=10, windowsize=1000, blacklist=None, region=None, seed=None
 ):
     if region:
         region_lst = region.replace("-", ":").split(":")
@@ -64,16 +63,29 @@ def get_regions(
                 f"ERROR: specified region {region} is not in:\n{bam.references}"
             )
         reg_filter = pbt.BedTool(reg_coord, from_string=True).saveas()
-        random_regions = (
-            pbt.BedTool()
-            .random(l=windowsize, n=nregions, g=reg_dict)
-            .shuffle(g=reg_dict, incl=reg_filter.fn, noOverlapping=True)
-            .tabix()
-        )
+        if seed:
+            random_regions = (
+                pbt.BedTool()
+                .random(l=windowsize, n=nregions, g=reg_dict, seed=seed)
+                .shuffle(g=reg_dict, incl=reg_filter.fn, noOverlapping=True, seed=seed)
+                .tabix()
+            )
+        else:             
+            random_regions = (
+                pbt.BedTool()
+                .random(l=windowsize, n=nregions, g=reg_dict)
+                .shuffle(g=reg_dict, incl=reg_filter.fn, noOverlapping=True)
+                .tabix()
+            )
     else:
-        random_regions = (
+        if seed:
+            random_regions = (
+            pbt.BedTool().random(l=windowsize, n=nregions, g=genome, seed=seed).tabix()
+            )
+        else:
+            random_regions = (
             pbt.BedTool().random(l=windowsize, n=nregions, g=genome).tabix()
-        )
+            )
     if blacklist:
         filtered_regions = random_regions.subtract(
             blacklist, A=True
@@ -613,6 +625,13 @@ def get_ratio(df):
     --region 10:456700-891000.""",
 )
 @click.option(
+    "--seed",
+    "seed",
+    default=None,
+    type=click.INT,
+    help="""Set seed for reproducibility.""",
+)
+@click.option(
     "--mp_backend",
     "-mp",
     "mp_type",
@@ -639,6 +658,7 @@ def main(
     standard_chroms,
     verbose,
     debug,
+    seed,
     mp_type,
 ):
 
@@ -655,6 +675,11 @@ def main(
     # if verbose:
     #    loglevel = logging.DEBUG
     #    log_format = "%(asctime)s: %(levelname)s - %(message)s"
+
+    # set a global random number generator for numpy
+    global rng
+    rng = np.random.default_rng(seed=seed)
+    random.seed(seed)
 
     # logging.basicConfig(stream=print, level=loglevel, format=log_format)
     global global_vars
@@ -738,6 +763,7 @@ def main(
         windowsize=1000,
         blacklist=blacklistfile,
         region=region,
+        seed=seed
     )
 
     if debug:
