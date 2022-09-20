@@ -122,4 +122,4 @@ Figure 3 shows the compound signal of the LYL1 TFBS from normalized coverage. Th
 
 ## Acknowledgment
 
-cfDNA_GCcorrection started as a fork of [deepTools](https://github.com/deeptools/deepTools) and was used as a skeleton for developing a GCcorrection method tailored towards cell-free DNA samples.
+cfDNA_GCcorrection started as a fork of [deepTools](https://github.com/deeptools/deepTools), which was used as a skeleton for developing a GCcorrection method tailored towards cell-free DNA samples.
