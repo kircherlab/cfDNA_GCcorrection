@@ -50,9 +50,9 @@ def openREADME():
     Since open() doesn't accept an encoding in python2...
     """
     try:
-        f = open("README.rst", encoding="utf-8")
+        f = open("README.md", encoding="utf-8")
     except:
-        f = open("README.rst")
+        f = open("README.md")
 
     foo = f.read()
     f.close()
