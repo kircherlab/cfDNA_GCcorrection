@@ -88,7 +88,9 @@ setup(
         "csaps",
         "ray",
         "pybedtools",
-        "click"
+        "click",
+        "mpire",
+        "loguru"
     ],
     zip_safe=True,
     cmdclass={'sdist': sdist, 'install': install}
