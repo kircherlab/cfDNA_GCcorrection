@@ -6,6 +6,7 @@ import matplotlib as mpl
 mpl.use('Agg')
 from cfDNA_GCcorrection import cm  # noqa: F401
 import numpy as np
+from loguru import logger
 
 
 debug = 0
@@ -88,6 +89,64 @@ def getGC_content(tb, chrom, fragStart, fragEnd, fraction=True):
         return (bases['G'] + bases['C']) / float(fragEnd - fragStart)
     return bases['G'] + bases['C']
 
+
+def map_chroms(ref_chroms, target_chroms, ref_name=None, target_name=None):
+    """_summary_
+
+    Args:
+        ref_chroms (iterable): iterable of reference chromosome names
+        target_chroms (iterable):iterable of target chromosome names the reference should be mapped to
+        ref_name (str, optional): Name of reference chroms for logging purposes (e.g. bam or 2bit). Defaults to None.
+        target_name (str, optional):  Name of target chroms for logging purposes (e.g. bam or 2bit). Defaults to None.
+
+    Returns:
+        dict: dictionary containing a mapping from reference to target chromosome names
+    """
+    
+    if not ref_name:
+        ref_name="reference"
+    if not target_name:
+        target_name="target"
+    
+    ref_chroms = set(ref_chroms)
+    target_chroms = set(target_chroms)
+    
+    
+    chrom_mapping = dict((x, x) for x in ref_chroms)
+    if ref_chroms != target_chroms:
+        logger.info(f"Chromosome names between {ref_name} and {target_name} do not match. Trying fixes ...")
+        logger.debug(f"{ref_name} : {ref_chroms}")
+        logger.debug(f"{target_name} : {target_chroms}")
+        # subset
+        if len(ref_chroms.intersection(target_chroms)) > 0 and not all("GL" in x for x in ref_chroms.intersection(target_chroms)):
+            chrom_mapping = dict([(x, x) for x in ref_chroms.intersection(target_chroms)])
+            logger.info(f"Using common chromosomes between {ref_name} and {target_name}.")
+            logger.debug(f"common chromosomes : {chrom_mapping.keys()}")
+        # add chr    
+        elif len({'chrM' if x == 'MT' else "chr" + x if not x.startswith("GL") else x for x in ref_chroms if x != 'dmel_mitochondrion_genome'}.intersection(target_chroms)) > 0:
+            
+            chrom_mapping = dict([(x,'chrM' if x == 'MT' else "chr" + x if not x.startswith("GL") else x) for x in ref_chroms if x != 'dmel_mitochondrion_genome'])
+            if set(chrom_mapping.values()) == target_chroms:
+                logger.info(f"Adding \"chr\" to the {ref_name} chromosome names solves the problem!")
+                logger.debug(f"Using the following mapping: {chrom_mapping}")
+            else:
+                chrom_mapping = {key:value for key,value in chrom_mapping.items() if value in target_chroms}
+                logger.info(f"Adding \"chr\" to the {ref_name} chromosome names solves the problem partially! Using common chromosomes between {ref_name} and {target_name}.")
+                logger.debug(f"Using the following mapping: {chrom_mapping}")
+        # remove chr
+        elif len({'MT' if x == 'chrM' else x.removeprefix("chr") if not x.startswith("GL") else x for x in ref_chroms if x != 'dmel_mitochondrion_genome'}.intersection(target_chroms)) > 0:
+            chrom_mapping = dict([(x,'MT' if x == 'chrM' else x.removeprefix("chr") if not x.startswith("GL") else x) for x in ref_chroms if x != 'dmel_mitochondrion_genome'])
+            if set(chrom_mapping.values()) == target_chroms:
+                logger.info(f"Removing \"chr\" to the {ref_name} chromosome names solves the problem!")
+                logger.debug(f"Using the following mapping: {chrom_mapping}")
+            else:
+                chrom_mapping = {key:value for key,value in chrom_mapping.items() if value in target_chroms}
+                logger.info(f"Removing \"chr\" to the {ref_name} chromosome names solves the problem partially! Using common chromosomes between {ref_name} and {target_name}.")
+                logger.debug(f"Using the following mapping: {chrom_mapping}")
+        else:
+            logger.error(f"{ref_name.capitalize()} and {target_name} have no matching chromosome names.")
+            exit(1)
+    return chrom_mapping
 
 def tbitToBamChrName(tbitNames, bamNames):
     """ checks if the chromosome names from the two-bit and bam file coincide.

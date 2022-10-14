@@ -24,7 +24,7 @@ from csaps import csaps
 from scipy.stats import poisson
 
 from cfDNA_GCcorrection import bamHandler
-from cfDNA_GCcorrection.utilities import getGC_content, tbitToBamChrName
+from cfDNA_GCcorrection.utilities import getGC_content, map_chroms
 
 ###### Set constants ######
 
@@ -711,7 +711,7 @@ def main(
 
     fragment_lengths = np.arange(minlen, maxlen + 1, length_step).tolist()
 
-    chr_name_bit_to_bam = tbitToBamChrName(list(tbit.chroms().keys()), bam.references)
+    chr_name_bit_to_bam = map_chroms(list(tbit.chroms().keys()), bam.references)
 
     # global_vars["genome_size"] = sum(tbit.chroms().values())
     # global_vars["total_reads"] = mapped
