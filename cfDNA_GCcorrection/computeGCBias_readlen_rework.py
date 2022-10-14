@@ -42,6 +42,7 @@ STANDARD_CHROMOSOMES = (
 def get_regions(
     genome, bam, nregions=10, windowsize=1000, blacklist=None, region=None, seed=None
 ):
+    logger.info("Generating random regions...")
     if region:
         region_lst = region.replace("-", ":").split(":")
         if region_lst[0] in bam.references:
@@ -89,8 +90,17 @@ def get_regions(
                 pbt.BedTool().random(l=windowsize, n=nregions, g=genome).tabix()
             )
     if blacklist:
+        logger.info("Removing blacklisted regions.")
+        blacklist_df = pbt.BedTool(blacklist).to_dataframe()
+        blacklist_map = map_chroms(set(blacklist_df["chrom"].unique()), genome)
+        mapped_blacklist_df = blacklist_df.replace({"chrom": blacklist_map})
+        mapped_blacklist = pbt.BedTool().from_dataframe(
+            mapped_blacklist_df.loc[
+                mapped_blacklist_df["chrom"].isin(blacklist_map.values())
+            ]
+        )
         filtered_regions = random_regions.subtract(
-            blacklist, A=True
+            mapped_blacklist, A=True
         )  # A=True: Remove entire feature if any overlap.
         return (
             filtered_regions.to_dataframe(
@@ -665,7 +675,9 @@ def main(
     #    print(passed_args)
 
     if verbose:
-        info_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{message}</level>"
+        info_format = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{message}</level>"
+        )
         logger.remove()
         logger.add(
             sys.stderr, level="INFO", format=info_format, colorize=False, enqueue=True
@@ -763,7 +775,6 @@ def main(
             bam.references[i]: (0, bam.lengths[i]) for i in range(len(bam.references))
         }
 
-    logger.info("Generating random regions...")
     regions = get_regions(
         genome=chrom_dict,
         bam=bam,
