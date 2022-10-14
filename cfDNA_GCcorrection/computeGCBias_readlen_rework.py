@@ -665,9 +665,7 @@ def main(
     #    print(passed_args)
 
     if verbose:
-        info_format = (
-            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{message}</level>"
-        )
+        info_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{message}</level>"
         logger.remove()
         logger.add(
             sys.stderr, level="INFO", format=info_format, colorize=False, enqueue=True
@@ -683,7 +681,6 @@ def main(
         logger.add(
             sys.stderr,
             level="WARNING",
-            format=debug_format,
             colorize=True,
             enqueue=True,
         )
