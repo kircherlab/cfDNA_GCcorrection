@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-import logging
+from loguru import logger
 import math
 import multiprocessing
 import os
@@ -70,7 +70,7 @@ def get_regions(
                 .shuffle(g=reg_dict, incl=reg_filter.fn, noOverlapping=True, seed=seed)
                 .tabix()
             )
-        else:             
+        else:
             random_regions = (
                 pbt.BedTool()
                 .random(l=windowsize, n=nregions, g=reg_dict)
@@ -80,11 +80,13 @@ def get_regions(
     else:
         if seed:
             random_regions = (
-            pbt.BedTool().random(l=windowsize, n=nregions, g=genome, seed=seed).tabix()
+                pbt.BedTool()
+                .random(l=windowsize, n=nregions, g=genome, seed=seed)
+                .tabix()
             )
         else:
             random_regions = (
-            pbt.BedTool().random(l=windowsize, n=nregions, g=genome).tabix()
+                pbt.BedTool().random(l=windowsize, n=nregions, g=genome).tabix()
             )
     if blacklist:
         filtered_regions = random_regions.subtract(
@@ -124,7 +126,7 @@ def get_N_GC(chrom, start, end, reference, fragment_lengths, steps=1, verbose=Fa
                 gc = roundGCLenghtBias(gc)
             except Exception as detail:
                 if verbose:
-                    logging.exception(detail)
+                    logger.exception(detail)
                 continue
             sub_n_gc[gc] += 1
         sub_Ndict[str(flen)] = sub_n_gc
@@ -155,7 +157,7 @@ def get_F_GC(chrom, start, end, bam, reference, verbose=False):
                     gc = roundGCLenghtBias(gc)
                 except Exception as detail:
                     if verbose:
-                        logging.exception(detail)
+                        logger.exception(detail)
                     continue
                 sub_Fdict[str(r_len)][gc] += 1
             elif not read.is_paired:
@@ -171,7 +173,7 @@ def get_F_GC(chrom, start, end, bam, reference, verbose=False):
                     gc = roundGCLenghtBias(gc)
                 except Exception as detail:
                     if verbose:
-                        logging.exception(detail)
+                        logger.exception(detail)
                     continue
                 sub_Fdict[str(r_len)][gc] += 1
             else:
@@ -185,8 +187,6 @@ def get_F_GC(chrom, start, end, bam, reference, verbose=False):
 
 
 def tabulateGCcontent_wrapper(args):
-    #    print("ARGS:")
-    #    print(args)
     return tabulateGCcontent_worker(**args)
 
 
@@ -232,7 +232,6 @@ def tabulateGCcontent_worker(
             fragment_lengths=fragment_lengths,
             verbose=verbose,
         )
-    logging.debug("returning values")
     return sub_Ndict, sub_Fdict
 
 
@@ -279,7 +278,6 @@ def tabulateGCcontent_worker_ray(
             fragment_lengths=fragment_lengths,
             verbose=verbose,
         )
-    logging.debug("returning values")
     return sub_Ndict, sub_Fdict
 
 
@@ -312,11 +310,11 @@ def tabulateGCcontent(
     # chrom_sizes = [(k, v) for k, v in chrom_sizes if k in list(chrNameBamToBit.keys())]
 
     if mp_type.lower() == "mp":
-        print("Using python Multiprocessing!")
+        logger.info("Using python Multiprocessing!")
         TASKS = [{**region, **param_dict} for region in regions]
         if len(TASKS) > 1 and num_cpus > 1:
             if verbose:
-                print(
+                logger.info(
                     (
                         "using {} processors for {} "
                         "number of tasks".format(num_cpus, len(TASKS))
@@ -333,7 +331,7 @@ def tabulateGCcontent(
         ray.init(num_cpus=num_cpus, _temp_dir=os.environ["TMPDIR"])
 
         if verbose:
-            print(ray.cluster_resources())
+            logger.info(ray.cluster_resources())
 
         futures = [
             tabulateGCcontent_worker_ray.remote(**{**region, **param_dict})
@@ -667,21 +665,35 @@ def main(
     #    print(passed_args)
 
     if verbose:
-        print("Setting up variables")
-    ### this need rework in regards to ray!!!! Until then, use sys.sterr###
-    ### if verbose: loglevel = INFO, if Debug loglevel = DEBUG, else higher
-    # loglevel = logging.INFO
-    # log_format = "%(message)s"
-    # if verbose:
-    #    loglevel = logging.DEBUG
-    #    log_format = "%(asctime)s: %(levelname)s - %(message)s"
+        info_format = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{message}</level>"
+        )
+        logger.remove()
+        logger.add(
+            sys.stderr, level="INFO", format=info_format, colorize=False, enqueue=True
+        )
+    elif debug:
+        debug_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>process: {process}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+        logger.remove()
+        logger.add(
+            sys.stderr, level="DEBUG", format=debug_format, colorize=True, enqueue=True
+        )
+    else:
+        logger.remove()
+        logger.add(
+            sys.stderr,
+            level="WARNING",
+            format=debug_format,
+            colorize=True,
+            enqueue=True,
+        )
 
+    logger.info("Setting up variables")
     # set a global random number generator for numpy
     global rng
     rng = np.random.default_rng(seed=seed)
     random.seed(seed)
 
-    # logging.basicConfig(stream=print, level=loglevel, format=log_format)
     global global_vars
     global_vars = dict()
     global_vars["2bit"] = genome
@@ -739,8 +751,7 @@ def main(
     # global_vars["min_reads"] = min_read_dict
 
     for key in global_vars:
-        print(f"{key}: {global_vars[key]}")
-        # logging.debug(f"{key}: {global_vars[key]}")
+        logger.debug(f"{key}: {global_vars[key]}")
 
     if standard_chroms:
         # get valid chromosomes and their lenght as dict that can be used by pybedtools and filter for human standard chromosomes.
@@ -755,7 +766,7 @@ def main(
             bam.references[i]: (0, bam.lengths[i]) for i in range(len(bam.references))
         }
 
-    print("Generating random regions...")
+    logger.info("Generating random regions...")
     regions = get_regions(
         genome=chrom_dict,
         bam=bam,
@@ -763,16 +774,15 @@ def main(
         windowsize=1000,
         blacklist=blacklistfile,
         region=region,
-        seed=seed
+        seed=seed,
     )
 
-    if debug:
-        print(f"regions contains {len(regions)} genomic coordinates")
-    # logging.info("computing frequencies")
-    print("Computing frequencies...")
+    logger.debug(f"regions contains {len(regions)} genomic coordinates")
+    # logger.info("computing frequencies")
+    logger.info("Computing frequencies...")
     # the GC of the genome is sampled each stepSize bp.
     # step_size = max(int(global_vars["genome_size"] / sampleSize), 1)
-    # logging.info(f"stepSize for genome sampling: {step_size}")
+    # logger.info(f"stepSize for genome sampling: {step_size}")
 
     data = tabulateGCcontent(
         num_cpus=num_cpus,
@@ -783,17 +793,13 @@ def main(
     # change the way data is handled
     if interpolate:
         if measurement_output:
-            # logging.info("saving measured data")
-            print("saving measured data")
+            logger.info("saving measured data")
             data.to_csv(measurement_output, sep="\t")
         r_data = interpolate_ratio_csaps(data)
         r_data.to_csv(gcbias_frequency_output, sep="\t")
     else:
         if measurement_output:
-            # logging.info(
-            #    "Option MeasurementOutput has no effect. Measured data is saved in GCbiasFrequencies file!"
-            # )
-            print(
+            logger.info(
                 "Option MeasurementOutput has no effect. Measured data is saved in GCbiasFrequencies file!"
             )
         r_data = get_ratio(data)
