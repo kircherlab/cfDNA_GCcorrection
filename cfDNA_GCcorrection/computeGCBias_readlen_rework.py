@@ -314,18 +314,24 @@ def tabulateGCcontent(
             pool.close()
             pool.join()
         else:
-            imap_res = list(map(tabulateGCcontent_wrapper, TASKS))
-    elif mp_type.lower() == "ray":
-        ray.init(num_cpus=num_cpus, _temp_dir=os.environ["TMPDIR"])
-
-        if verbose:
-            logger.info(ray.cluster_resources())
-
-        futures = [
-            tabulateGCcontent_worker_ray.remote(**{**region, **param_dict})
-            for region in regions
-        ]
-        imap_res = ray.get(futures)
+            imap_res = list(map(tabulateGCcontent_wrapper, chunk_tasks))
+    elif mp_type.lower() == "mpire":
+        logger.info("Using mpire multiprocessing!")
+        TASKS = [{**region, **param_dict} for region in regions]
+        if len(TASKS) > 1 and num_cpus > 1:
+            logger.info(
+                (
+                    "using {} processors for {} "
+                    "number of tasks".format(num_cpus, len(TASKS))
+                )
+            )
+            chunked_tasks = chunk_tasks(TASKS, n_splits=num_cpus * 2)
+            with WorkerPool(n_jobs=10) as pool:
+                imap_res = pool.imap_unordered(
+                    tabulateGCcontent_wrapper, chunked_tasks, chunk_size=1
+                )
+        else:
+            imap_res = list(map(tabulateGCcontent_wrapper, chunk_tasks))
 
     ndict = {
         str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths
