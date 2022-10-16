@@ -122,14 +122,16 @@ def roundGCLenghtBias(gc):
     return int(gc_new)
 
 
-def get_N_GC(chrom, start, end, reference, fragment_lengths, steps=1, verbose=False):
+def get_N_GC(chrom, start, end, reference, fragment_lengths, chr_name_bam_to_bit_mapping, steps=1, verbose=False):
     sub_Ndict = dict()
+    tbit_chrom = chr_name_bam_to_bit_mapping[chrom]
+    logger.debug(f"chrom: {chrom}; mapped tbit_chrom: {tbit_chrom}")
     for flen in fragment_lengths:
         sub_n_gc = np.zeros(100 + 1, dtype="int")
         for pos in range(start, end - flen + 1, steps):
             try:
                 gc = getGC_content(
-                    reference, chrom, pos, int(pos + flen), fraction=True
+                    reference, tbit_chrom, pos, int(pos + flen), fraction=True
                 )
                 gc = roundGCLenghtBias(gc)
             except Exception as detail:
@@ -141,8 +143,10 @@ def get_N_GC(chrom, start, end, reference, fragment_lengths, steps=1, verbose=Fa
     return sub_Ndict
 
 
-def get_F_GC(chrom, start, end, bam, reference, verbose=False):
+def get_F_GC(chrom, start, end, bam, reference, chr_name_bam_to_bit_mapping, verbose=False):
     sub_Fdict = defaultdict(lambda: np.zeros(100 + 1, dtype="int"))
+    tbit_chrom = chr_name_bam_to_bit_mapping[chrom]
+    logger.debug(f"chrom: {chrom}; mapped tbit_chrom: {tbit_chrom}")
     for read in bam.fetch(chrom, start, end):
         r_len = 0
         if (
@@ -157,7 +161,7 @@ def get_F_GC(chrom, start, end, bam, reference, verbose=False):
                 try:
                     gc = getGC_content(
                         reference,
-                        read.reference_name,
+                        tbit_chrom,
                         read.reference_start,
                         read.reference_end,
                         fraction=True,
@@ -173,7 +177,7 @@ def get_F_GC(chrom, start, end, bam, reference, verbose=False):
                 try:
                     gc = getGC_content(
                         reference,
-                        read.reference_name,
+                        tbit_chrom,
                         read.reference_start,
                         read.reference_end,
                         fraction=True,
@@ -248,9 +252,9 @@ def tabulateGCcontent_worker_ray(
     chrom,
     start,
     end,
+    chr_name_bam_to_bit_mapping,
     stepSize=1,
     fragment_lengths=None,
-    chrNameBamToBit=None,
     verbose=False,
 ):
     # if verbose:
@@ -262,7 +266,7 @@ def tabulateGCcontent_worker_ray(
 
     if not fragment_lengths:
         # print("no fragment lengths specified, using measured")
-        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit)
+        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit, chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping)
         frag_lens = tuple(int(x) for x in sub_Fdict.keys())
         sub_Ndict = get_N_GC(
             chrom,
@@ -276,7 +280,7 @@ def tabulateGCcontent_worker_ray(
 
     else:
         # print(f"using fragment lengths: {fragment_lengths}")
-        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit)
+        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit, chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping)
         sub_Ndict = get_N_GC(
             chrom,
             start,
@@ -285,6 +289,7 @@ def tabulateGCcontent_worker_ray(
             steps=stepSize,
             fragment_lengths=fragment_lengths,
             verbose=verbose,
+            chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping
         )
     return sub_Ndict, sub_Fdict
 
@@ -295,9 +300,9 @@ def tabulateGCcontent_worker_ray(
 def tabulateGCcontent(
     num_cpus,
     regions,
+    chr_name_bam_to_bit_mapping,
     stepSize=1,
     fragment_lengths=None,
-    chrNameBamToBit=None,
     mp_type="MP",
     verbose=False,
 ):
@@ -307,15 +312,10 @@ def tabulateGCcontent(
     param_dict = {
         "stepSize": stepSize,
         "fragment_lengths": fragment_lengths,
-        "chrNameBamToBit": chrNameBamToBit,
+        "chr_name_bam_to_bit_mapping": chr_name_bam_to_bit_mapping,
         "verbose": verbose,
     }
 
-    # chrNameBamToBit = dict([(v, k) for k, v in chr_name_bit_to_bam.items()])
-    # print(chr_name_bit_to_bam)
-    # print(chrNameBamToBit)
-    # chunkSize = int(min(2e6, 4e5 / global_vars['reads_per_bp']))
-    # chrom_sizes = [(k, v) for k, v in chrom_sizes if k in list(chrNameBamToBit.keys())]
 
     if mp_type.lower() == "mp":
         logger.info("Using python Multiprocessing!")
@@ -718,7 +718,7 @@ def main(
 
     fragment_lengths = np.arange(minlen, maxlen + 1, length_step).tolist()
 
-    chr_name_bit_to_bam = map_chroms(list(tbit.chroms().keys()), bam.references)
+
 
     # global_vars["genome_size"] = sum(tbit.chroms().values())
     # global_vars["total_reads"] = mapped
@@ -760,6 +760,8 @@ def main(
     for key in global_vars:
         logger.debug(f"{key}: {global_vars[key]}")
 
+    
+
     if standard_chroms:
         # get valid chromosomes and their lenght as dict that can be used by pybedtools and filter for human standard chromosomes.
         # This represents the information in a .genome file.
@@ -782,6 +784,8 @@ def main(
         region=region,
         seed=seed,
     )
+    # the chromosome names in chrom_dict/regions are based on the bam file. For accessing tbit files, a mapping is needed.
+    chr_name_bam_to_bit_mapping = map_chroms(bam.references, list(tbit.chroms().keys()), ref_name="bam file", target_name="2bit reference file" )
 
     logger.debug(f"regions contains {len(regions)} genomic coordinates")
     # logger.info("computing frequencies")
@@ -791,6 +795,7 @@ def main(
     # logger.info(f"stepSize for genome sampling: {step_size}")
 
     data = tabulateGCcontent(
+        chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
         num_cpus=num_cpus,
         regions=regions,
         fragment_lengths=fragment_lengths,
