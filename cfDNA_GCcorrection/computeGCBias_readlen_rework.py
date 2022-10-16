@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import argparse
-from loguru import logger
 import math
 import multiprocessing
 import os
@@ -10,17 +8,17 @@ import random
 import sys
 import time
 from collections import defaultdict
-from ctypes.wintypes import INT
-from functools import partial
-from re import I
+from collections.abc import Sequence
 
 import click
 import numpy as np
 import pandas as pd
 import py2bit
 import pybedtools as pbt
-import ray
 from csaps import csaps
+from loguru import logger
+from mpire import WorkerPool
+from mpire.utils import chunk_tasks
 from scipy.stats import poisson
 
 from cfDNA_GCcorrection import bamHandler
