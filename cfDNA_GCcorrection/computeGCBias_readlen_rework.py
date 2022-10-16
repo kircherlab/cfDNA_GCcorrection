@@ -300,7 +300,7 @@ def tabulateGCcontent(
 
 
     if mp_type.lower() == "mp":
-        logger.info("Using python Multiprocessing!")
+        logger.info("Using python multiprocessing!")
         TASKS = [{**region, **param_dict} for region in regions]
         if len(TASKS) > 1 and num_cpus > 1:
             logger.info(
@@ -621,10 +621,10 @@ def get_ratio(df):
     "--mp_backend",
     "-mp",
     "mp_type",
-    type=click.Choice(["MP", "Ray"], case_sensitive=False),
-    default="MP",
+    type=click.Choice(["MP", "MPIRE"], case_sensitive=False),
+    default="MPIRE",
     show_default=True,
-    help="Specifies the multiprocessing backend. MP = python multiprocessing, Ray for ray. (Be careful, the latter is currently under development!)",
+    help="Specifies the multiprocessing backend. MP = python multiprocessing, MPIRE for using mpire.",
 )
 @click.option("-v", "--verbose", "verbose", is_flag=True, help="Enables verbose mode")
 @click.option("--debug", "debug", is_flag=True, help="Enables debug mode")
@@ -652,19 +652,20 @@ def main(
     #    passed_args=locals()
     #    print(passed_args)
 
-    if verbose:
+    if debug:
+        debug_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>process: {process}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+        logger.remove()
+        logger.add(
+            sys.stderr, level="DEBUG", format=debug_format, colorize=True, enqueue=True
+        )
+        logger.debug("Debug mode active.")
+    elif verbose:
         info_format = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{message}</level>"
         )
         logger.remove()
         logger.add(
             sys.stderr, level="INFO", format=info_format, colorize=False, enqueue=True
-        )
-    elif debug:
-        debug_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>process: {process}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
-        logger.remove()
-        logger.add(
-            sys.stderr, level="DEBUG", format=debug_format, colorize=True, enqueue=True
         )
     else:
         logger.remove()
