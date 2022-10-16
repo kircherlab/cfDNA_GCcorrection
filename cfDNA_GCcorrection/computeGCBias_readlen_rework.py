@@ -35,6 +35,12 @@ STANDARD_CHROMOSOMES = (
 
 
 ###### define functions doing the work ######
+def flatten(xs):
+    for x in xs:
+        if isinstance(x, Sequence) and not isinstance(x, (str, bytes)):
+            yield from flatten(x)
+        else:
+            yield x
 
 
 def get_regions(
@@ -198,57 +204,33 @@ def get_F_GC(chrom, start, end, bam, reference, chr_name_bam_to_bit_mapping, ver
 ###### worker definition for ray ######
 
 
-def tabulateGCcontent_wrapper(args):
-    return tabulateGCcontent_worker(**args)
+def tabulateGCcontent_wrapper(*chunk):
+    logger.debug(f"Worker starting to work on chunk: {chunk}")
+
+    logger.debug("Setting up wrapper dictionaries.")
+    wrapper_ndict = dict()
+
+    wrapper_fdict = dict()
+
+    for task in flatten(chunk):
+        logger.debug(f"Calculating values for task: {task}")
+        subN_gc, subF_gc = tabulateGCcontent_worker(**task)
+        logger.debug(f"Updating wrapper dictionaries.")
+        wrapper_ndict = {
+            k: wrapper_ndict.get(k, 0) + subN_gc.get(k, np.zeros(100 + 1, dtype="int"))
+            for k in set(wrapper_ndict) | set(subN_gc)
+        }
+        wrapper_fdict = {
+            k: wrapper_fdict.get(k, 0) + subF_gc.get(k, np.zeros(100 + 1, dtype="int"))
+            for k in set(wrapper_fdict) | set(subN_gc)
+        }  # In this case, we use only read lengths that are in the defined fragment lengths, use subN_gc keys as proxy
+
+    logger.debug("Returning dictionaries from wrapper.")
+
+    return wrapper_ndict, wrapper_fdict
 
 
 def tabulateGCcontent_worker(
-    chrom,
-    start,
-    end,
-    stepSize=1,
-    fragment_lengths=None,
-    chrNameBamToBit=None,
-    verbose=False,
-):
-    # if verbose:
-    #    passed_args=locals()
-    #    print(passed_args)
-
-    tbit = py2bit.open(global_vars["2bit"])
-    bam = bamHandler.openBam(global_vars["bam"])
-
-    if not fragment_lengths:
-        # print("no fragment lengths specified, using measured")
-        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit)
-        frag_lens = tuple(int(x) for x in sub_Fdict.keys())
-        sub_Ndict = get_N_GC(
-            chrom,
-            start,
-            end,
-            reference=tbit,
-            steps=stepSize,
-            fragment_lengths=frag_lens,
-            verbose=verbose,
-        )
-
-    else:
-        # print(f"using fragment lengths: {fragment_lengths}")
-        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit)
-        sub_Ndict = get_N_GC(
-            chrom,
-            start,
-            end,
-            reference=tbit,
-            steps=stepSize,
-            fragment_lengths=fragment_lengths,
-            verbose=verbose,
-        )
-    return sub_Ndict, sub_Fdict
-
-
-@ray.remote(num_cpus=1)
-def tabulateGCcontent_worker_ray(
     chrom,
     start,
     end,
@@ -321,16 +303,14 @@ def tabulateGCcontent(
         logger.info("Using python Multiprocessing!")
         TASKS = [{**region, **param_dict} for region in regions]
         if len(TASKS) > 1 and num_cpus > 1:
-            if verbose:
-                logger.info(
-                    (
-                        "using {} processors for {} "
-                        "number of tasks".format(num_cpus, len(TASKS))
-                    )
-                )
-            random.shuffle(TASKS)
+            logger.info(
+                ("using {} processors for {} " "tasks".format(num_cpus, len(TASKS)))
+            )
+            chunked_tasks = chunk_tasks(TASKS, n_splits=num_cpus * 2)
             pool = multiprocessing.Pool(num_cpus)
-            imap_res = pool.map_async(tabulateGCcontent_wrapper, TASKS).get(9999999)
+            imap_res = pool.map_async(
+                tabulateGCcontent_wrapper, chunked_tasks, chunksize=1
+            ).get(9999999)
             pool.close()
             pool.join()
         else:
