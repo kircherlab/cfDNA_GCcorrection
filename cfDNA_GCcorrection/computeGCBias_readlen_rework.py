@@ -326,7 +326,7 @@ def tabulateGCcontent(
                 )
             )
             chunked_tasks = chunk_tasks(TASKS, n_splits=num_cpus * 2)
-            with WorkerPool(n_jobs=10) as pool:
+            with WorkerPool(n_jobs=num_cpus) as pool:
                 imap_res = pool.imap_unordered(
                     tabulateGCcontent_wrapper, chunked_tasks, chunk_size=1
                 )
