@@ -204,17 +204,17 @@ def get_F_GC(chrom, start, end, bam, reference, chr_name_bam_to_bit_mapping, ver
 ###### worker definition for ray ######
 
 
-def tabulateGCcontent_wrapper(*chunk):
+def tabulateGCcontent_wrapper(param_dict,*chunk):
     logger.debug(f"Worker starting to work on chunk: {chunk}")
-
+    logger.debug(f"param_dict: {param_dict}\n chunk: {chunk}")
     logger.debug("Setting up wrapper dictionaries.")
-    wrapper_ndict = dict()
 
+    wrapper_ndict = dict()
     wrapper_fdict = dict()
 
     for task in flatten(chunk):
         logger.debug(f"Calculating values for task: {task}")
-        subN_gc, subF_gc = tabulateGCcontent_worker(**task)
+        subN_gc, subF_gc = tabulateGCcontent_worker(**task,**param_dict)
         logger.debug(f"Updating wrapper dictionaries.")
         wrapper_ndict = {
             k: wrapper_ndict.get(k, 0) + subN_gc.get(k, np.zeros(100 + 1, dtype="int"))
@@ -301,7 +301,7 @@ def tabulateGCcontent(
 
     if mp_type.lower() == "mp":
         logger.info("Using python multiprocessing!")
-        TASKS = [{**region, **param_dict} for region in regions]
+        TASKS = regions#[{**region, **param_dict} for region in regions]
         if len(TASKS) > 1 and num_cpus > 1:
             logger.info(
                 ("using {} processors for {} " "tasks".format(num_cpus, len(TASKS)))
@@ -309,7 +309,7 @@ def tabulateGCcontent(
             chunked_tasks = chunk_tasks(TASKS, n_splits=num_cpus * 2)
             pool = multiprocessing.Pool(num_cpus)
             imap_res = pool.map_async(
-                tabulateGCcontent_wrapper, chunked_tasks, chunksize=1
+                tabulateGCcontent_wrapper, (param_dict,chunked_tasks), chunksize=1
             ).get(9999999)
             pool.close()
             pool.join()
@@ -326,7 +326,7 @@ def tabulateGCcontent(
                 )
             )
             chunked_tasks = chunk_tasks(TASKS, n_splits=num_cpus * 2)
-            with WorkerPool(n_jobs=num_cpus) as pool:
+            with WorkerPool(n_jobs=num_cpus, shared_objects=param_dict) as pool:
                 imap_res = pool.imap_unordered(
                     tabulateGCcontent_wrapper, chunked_tasks, chunk_size=1
                 )
