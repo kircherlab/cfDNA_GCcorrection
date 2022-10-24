@@ -300,11 +300,12 @@ def tabulateGCcontent(
 
 
     if mp_type.lower() == "mp":
-        logger.info("Using python multiprocessing!")
+        
         TASKS = regions#[{**region, **param_dict} for region in regions]
         if len(TASKS) > 1 and num_cpus > 1:
+            logger.info("Using python multiprocessing!")
             logger.info(
-                ("using {} processors for {} " "tasks".format(num_cpus, len(TASKS)))
+                ("Using {} processors for {} " "tasks".format(num_cpus, len(TASKS)))
             )
             chunked_tasks = chunk_tasks(TASKS, n_splits=num_cpus * 2)
             pool = multiprocessing.Pool(num_cpus)
@@ -319,9 +320,10 @@ def tabulateGCcontent(
         logger.info("Using mpire multiprocessing!")
         TASKS = [{**region, **param_dict} for region in regions]
         if len(TASKS) > 1 and num_cpus > 1:
+            logger.info("Using mpire multiprocessing!")
             logger.info(
                 (
-                    "using {} processors for {} "
+                    "Using {} processors for {} "
                     "number of tasks".format(num_cpus, len(TASKS))
                 )
             )
