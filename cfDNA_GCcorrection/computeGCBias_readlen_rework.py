@@ -365,7 +365,16 @@ def tabulateGCcontent(
     )  # set length index to integer for proper sorting
     data.sort_index(inplace=True)
 
-    return data
+    # filter data for standard values (all zero), except for first and last column
+    Fdata = data.loc["F_gc"]
+    Fdata_filtered = Fdata.loc[Fdata.index.isin(Fdata.index[[0,-1]]) | (Fdata != 0).any(axis=1)]
+    Fdata_multiindex = pd.concat({"F_gc":Fdata_filtered})
+    Ndata = data.loc["N_gc"]
+    Ndata_filtered = Ndata.loc[Ndata.index.isin(Ndata.index[[0,-1]]) | (Ndata != 0).any(axis=1)]
+    Ndata_multiindex = pd.concat({"N_gc":Ndata_filtered})
+    filtered_data = pd.concat([Ndata_multiindex,Fdata_multiindex])
+
+    return filtered_data
 
 
 ###### Processing mesured values either raw or with interpolation ######
