@@ -9,6 +9,8 @@ import sys
 import time
 from collections import defaultdict
 from collections.abc import Sequence
+from itertools import starmap
+
 
 import click
 import numpy as np
@@ -239,9 +241,6 @@ def tabulateGCcontent_worker(
     fragment_lengths=None,
     verbose=False,
 ):
-    # if verbose:
-    #    passed_args=locals()
-    #    print(passed_args)
 
     tbit = py2bit.open(global_vars["2bit"])
     bam = bamHandler.openBam(global_vars["bam"])
@@ -301,24 +300,25 @@ def tabulateGCcontent(
 
     if mp_type.lower() == "mp":
         
-        TASKS = regions#[{**region, **param_dict} for region in regions]
+        TASKS = regions
         if len(TASKS) > 1 and num_cpus > 1:
             logger.info("Using python multiprocessing!")
             logger.info(
                 ("Using {} processors for {} " "tasks".format(num_cpus, len(TASKS)))
             )
             chunked_tasks = chunk_tasks(TASKS, n_splits=num_cpus * 2)
+            starmap_generator = ((param_dict, chunk) for chunk in chunked_tasks)
             pool = multiprocessing.Pool(num_cpus)
-            imap_res = pool.map_async(
-                tabulateGCcontent_wrapper, (param_dict,chunked_tasks), chunksize=1
+            imap_res = pool.starmap_async(
+                tabulateGCcontent_wrapper,starmap_generator, chunksize=1
             ).get(9999999)
             pool.close()
             pool.join()
         else:
-            imap_res = list(map(tabulateGCcontent_wrapper, chunk_tasks))
+            starmap_generator = ((param_dict, chunk) for chunk in TASKS)
+            imap_res = starmap(tabulateGCcontent_wrapper, starmap_generator)
     elif mp_type.lower() == "mpire":
-        logger.info("Using mpire multiprocessing!")
-        TASKS = [{**region, **param_dict} for region in regions]
+        TASKS = regions
         if len(TASKS) > 1 and num_cpus > 1:
             logger.info("Using mpire multiprocessing!")
             logger.info(
@@ -333,7 +333,9 @@ def tabulateGCcontent(
                     tabulateGCcontent_wrapper, chunked_tasks, chunk_size=1
                 )
         else:
-            imap_res = list(map(tabulateGCcontent_wrapper, chunk_tasks))
+            starmap_generator = ((param_dict, chunk) for chunk in TASKS)
+            imap_res = starmap(tabulateGCcontent_wrapper, starmap_generator)
+
 
     ndict = {
         str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths
