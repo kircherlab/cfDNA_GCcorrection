@@ -20,6 +20,235 @@ from cfDNA_GCcorrection import cm  # noqa: F401
 debug = 0
 
 
+def getGC_content(tb, chrom, fragStart, fragEnd, fraction=True):
+    """Extract the GC contetn from a genomic interval, given a 2bit genome reference.
+
+    Args:
+        tb (2bit file): Genome reference in 2bit format
+        chrom (str): Chromosome name matching the 2bit file
+        fragStart (int): Start coordinate of interval
+        fragEnd (int): End coordinate of interval
+        fraction (bool, optional): Flag for returning GC fraction or the sum of G and C nucleotides. Defaults to True.
+
+    Raises:
+        Exception: Raises exception if too many NNNs are in the requested interval.
+
+    Returns:
+        numeric: number of G and C or GC fraction, depending on fraction option
+    """
+    bases = tb.bases(chrom, fragStart, fragEnd, fraction=False)
+    if fragEnd > tb.chroms(chrom):
+        fragEnd = tb.chroms(chrom)
+    if sum(bases.values()) < 0.95 * (fragEnd - fragStart):
+        raise Exception(
+            "WARNING: too many NNNs present in {}:{}-{}".format(
+                chrom, fragStart, fragEnd
+            )
+        )
+        return None
+
+    if fraction:
+        return (bases["G"] + bases["C"]) / float(fragEnd - fragStart)
+    return bases["G"] + bases["C"]
+
+
+def map_chroms(ref_chroms, target_chroms, ref_name=None, target_name=None):
+    """Create a mapping between the chromosome names of a target and reference. If chromosome names don't match, fixes are tried.
+
+    Args:
+        ref_chroms (iterable): iterable of reference chromosome names
+        target_chroms (iterable):iterable of target chromosome names the reference should be mapped to
+        ref_name (str, optional): Name of reference chroms for logging purposes (e.g. bam or 2bit). Defaults to None.
+        target_name (str, optional):  Name of target chroms for logging purposes (e.g. bam or 2bit). Defaults to None.
+
+    Returns:
+        dict: dictionary containing a mapping from reference to target chromosome names
+    """
+
+    if not ref_name:
+        ref_name = "reference"
+    if not target_name:
+        target_name = "target"
+
+    ref_chroms = set(ref_chroms)
+    target_chroms = set(target_chroms)
+
+    chrom_mapping = dict((x, x) for x in ref_chroms)
+    if ref_chroms != target_chroms:
+        logger.info(
+            f"Chromosome names between {ref_name} and {target_name} do not match. Trying fixes ..."
+        )
+        logger.debug(f"{ref_name} : {ref_chroms}")
+        logger.debug(f"{target_name} : {target_chroms}")
+        # subset
+        if len(ref_chroms.intersection(target_chroms)) > 0 and not all(
+            "GL" in x for x in ref_chroms.intersection(target_chroms)
+        ):
+            chrom_mapping = dict(
+                [(x, x) for x in ref_chroms.intersection(target_chroms)]
+            )
+            logger.info(
+                f"Using common chromosomes between {ref_name} and {target_name}."
+            )
+            logger.debug(f"common chromosomes : {chrom_mapping.keys()}")
+        # add chr
+        elif (
+            len(
+                {
+                    "chrM" if x == "MT" else "chr" + x if not x.startswith("GL") else x
+                    for x in ref_chroms
+                    if x != "dmel_mitochondrion_genome"
+                }.intersection(target_chroms)
+            )
+            > 0
+        ):
+
+            chrom_mapping = dict(
+                [
+                    (
+                        x,
+                        "chrM"
+                        if x == "MT"
+                        else "chr" + x
+                        if not x.startswith("GL")
+                        else x,
+                    )
+                    for x in ref_chroms
+                    if x != "dmel_mitochondrion_genome"
+                ]
+            )
+            if set(chrom_mapping.values()) == target_chroms:
+                logger.info(
+                    f'Adding "chr" to the {ref_name} chromosome names solves the problem!'
+                )
+                logger.debug(f"Using the following mapping: {chrom_mapping}")
+            else:
+                chrom_mapping = {
+                    key: value
+                    for key, value in chrom_mapping.items()
+                    if value in target_chroms
+                }
+                logger.info(
+                    f'Adding "chr" to the {ref_name} chromosome names solves the problem partially! Using common chromosomes between {ref_name} and {target_name}.'
+                )
+                logger.debug(f"Using the following mapping: {chrom_mapping}")
+        # remove chr
+        elif (
+            len(
+                {
+                    "MT"
+                    if x == "chrM"
+                    else x.removeprefix("chr")
+                    if not x.startswith("GL")
+                    else x
+                    for x in ref_chroms
+                    if x != "dmel_mitochondrion_genome"
+                }.intersection(target_chroms)
+            )
+            > 0
+        ):
+            chrom_mapping = dict(
+                [
+                    (
+                        x,
+                        "MT"
+                        if x == "chrM"
+                        else x.removeprefix("chr")
+                        if not x.startswith("GL")
+                        else x,
+                    )
+                    for x in ref_chroms
+                    if x != "dmel_mitochondrion_genome"
+                ]
+            )
+            if set(chrom_mapping.values()) == target_chroms:
+                logger.info(
+                    f'Removing "chr" to the {ref_name} chromosome names solves the problem!'
+                )
+                logger.debug(f"Using the following mapping: {chrom_mapping}")
+            else:
+                chrom_mapping = {
+                    key: value
+                    for key, value in chrom_mapping.items()
+                    if value in target_chroms
+                }
+                logger.info(
+                    f'Removing "chr" to the {ref_name} chromosome names solves the problem partially! Using common chromosomes between {ref_name} and {target_name}.'
+                )
+                logger.debug(f"Using the following mapping: {chrom_mapping}")
+        else:
+            logger.error(
+                f"{ref_name.capitalize()} and {target_name} have no matching chromosome names."
+            )
+            exit(1)
+    return chrom_mapping
+
+
+def hash_file(file):
+    """Memory efficient way of creating a sha256 hash of a file.
+
+    Args:
+        file (file object): A file that will be read in binary format and fed into a hashing function.
+
+    Returns:
+        str: Hexadecimal digits of the hash digest.
+    """
+    file_hash = hashlib.sha256()
+    BLOCK_SIZE = 65536  # blocksize of 64 kilobyte
+    with open(file, "rb") as f:
+        file_block = f.read(BLOCK_SIZE)
+        while len(file_block) > 0:
+            file_hash.update(file_block)
+            file_block = f.read(BLOCK_SIZE)
+    return file_hash.hexdigest()
+
+
+def write_precomputed_table(df, params_dict, filename):
+    """Writes a json encoded dictionary with parameters to the first line and appends tab separated table to a file.
+
+    Args:
+        df (pandas Dataframe): table to export to file
+        params_dict (dict): dictionary with parameters that should be bundled with the table
+        filename (file object): name of the outputfile
+    """
+    if ".gz" in filename:
+        open_function = gzip.open
+        json_dict = (json.dumps(params_dict) + "\n").encode("UTF-8")
+    else:
+        open_function = open
+        json_dict = json.dumps(params_dict) + "\n"
+    with open_function(filename, "w") as file:
+        file.write(json_dict)
+    df.to_csv(filename, sep="\t", mode="a")
+
+
+def read_precomputed_table(filename):
+    """Reads a file with a json encoded dictionary with parameters in the first line and extracts a tab separated table from all following lines.
+
+    Args:
+        filename (file object): name of the inputfile
+
+    Returns:
+       tuple: Returns a tuple containing a pandas DataFrame and a dictionary (df, paramdict).
+    """
+    if ".gz" in filename:
+        open_function = gzip.open
+        decode_function = lambda x: json.loads(x.decode("UTF-8").rstrip())
+    else:
+        open_function = open
+        decode_function = lambda x: json.loads(x.rstrip())
+    with open_function(filename, "r") as file:
+        dict_line = file.readline()
+        param_dict = decode_function(dict_line)
+
+    df = pd.read_csv(filename, skiprows=1, sep="\t", index_col=[0, 1])
+
+    return df, param_dict
+
+
+# deeptools utility functions
+
+
 def smartLabel(label):
     """
     Given a file name, likely with a path, return the file name without the path
@@ -28,7 +257,7 @@ def smartLabel(label):
     should be stripped.
     """
     lab = os.path.splitext(os.path.basename(label))[0]
-    if lab == '':
+    if lab == "":
         # Maybe we have a dot file?
         lab = os.path.basename(label)
     return lab
