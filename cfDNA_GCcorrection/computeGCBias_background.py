@@ -11,10 +11,10 @@ from collections import defaultdict
 from collections.abc import Sequence
 from itertools import starmap
 
-
 import click
 import numpy as np
 import pandas as pd
+#from cfDNA_GCcorrection.parserCommon import output
 import py2bit
 import pybedtools as pbt
 from csaps import csaps
@@ -24,12 +24,8 @@ from mpire.utils import chunk_tasks
 from scipy.stats import poisson
 
 from cfDNA_GCcorrection import bamHandler
-from cfDNA_GCcorrection.utilities import (
-    getGC_content,
-    map_chroms,
-    write_precomputed_table,
-    hash_file,
-)
+from cfDNA_GCcorrection.utilities import (getGC_content, hash_file, map_chroms,
+                                          write_precomputed_table)
 
 ###### Set constants ######
 
@@ -453,7 +449,7 @@ def tabulateGCcontent(
 def main(
     bamfile,
     genome,
-    gcbias_frequency_output,
+    output_file,
     num_cpus,
     minlen,
     maxlen,
@@ -585,7 +581,7 @@ def main(
         out_dict = {"blacklist_hash": None, "get_regions_params": region_params}
 
     write_precomputed_table(
-        df=data, params_dict=out_dict, filename="precompute_testfile.tsv.gz"
+        df=data, params_dict=out_dict, filename=output_file
     )
 
 
