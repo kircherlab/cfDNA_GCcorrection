@@ -760,7 +760,8 @@ def main(
     for key in global_vars:
         logger.debug(f"{key}: {global_vars[key]}")
 
-    
+    # the chromosome names in chrom_dict/regions will be based on the bam file. For accessing tbit files, a mapping is needed.
+    chr_name_bam_to_bit_mapping = map_chroms(bam.references, list(tbit.chroms().keys()), ref_name="bam file", target_name="2bit reference file" )
 
     if standard_chroms:
         # get valid chromosomes and their lenght as dict that can be used by pybedtools and filter for human standard chromosomes.
@@ -768,11 +769,11 @@ def main(
         chrom_dict = {
             bam.references[i]: (0, bam.lengths[i])
             for i in range(len(bam.references))
-            if bam.references[i] in STANDARD_CHROMOSOMES
+            if bam.references[i] in STANDARD_CHROMOSOMES and chr_name_bam_to_bit_mapping.keys()
         }
     else:
-        chrom_dict = chrom_dict = {
-            bam.references[i]: (0, bam.lengths[i]) for i in range(len(bam.references))
+        chrom_dict = {
+        bam.references[i]: (0, bam.lengths[i]) for i in range(len(bam.references)) if bam.references[i] in chr_name_bam_to_bit_mapping.keys()
         }
 
     regions = get_regions(
@@ -784,8 +785,7 @@ def main(
         region=region,
         seed=seed,
     )
-    # the chromosome names in chrom_dict/regions are based on the bam file. For accessing tbit files, a mapping is needed.
-    chr_name_bam_to_bit_mapping = map_chroms(bam.references, list(tbit.chroms().keys()), ref_name="bam file", target_name="2bit reference file" )
+
 
     logger.debug(f"regions contains {len(regions)} genomic coordinates")
     # logger.info("computing frequencies")
