@@ -24,7 +24,12 @@ from mpire.utils import chunk_tasks
 from scipy.stats import poisson
 
 from cfDNA_GCcorrection import bamHandler
-from cfDNA_GCcorrection.utilities import getGC_content, map_chroms
+from cfDNA_GCcorrection.utilities import (
+    getGC_content,
+    map_chroms,
+    hash_file,
+    read_precomputed_table,
+)
 
 ###### Set constants ######
 
@@ -614,6 +619,17 @@ def get_ratio(df):
             less accurate results. Deactivated by default.""",
 )
 @click.option(
+    "--precomputed_background",
+    "-pb",
+    "precomputed_Ngc",
+    type=click.Path(exists=True, readable=True),
+    default=None,
+    help="""A tsv. file containing parameters and a precomputed background 
+    distribution created by the computeGCbias_background script. 
+    Some command line options are overwritten make background and read distribution
+    comparable. Make sure that genome builds match!""",
+)
+@click.option(
     "--MeasurementOutput",
     "-MO",
     "measurement_output",
@@ -684,6 +700,7 @@ def main(
     lengthStep,
     interpolate,
     measurement_output,
+    precomputed_Ngc,
     sampleSize,
     blacklistfile,
     region,
@@ -745,45 +762,10 @@ def main(
 
     fragment_lengths = np.arange(minlen, maxlen + 1, length_step).tolist()
 
-    # global_vars["genome_size"] = sum(tbit.chroms().values())
-    # global_vars["total_reads"] = mapped
-    # global_vars["reads_per_bp"] = (
-    #    float(global_vars["total_reads"]) / effectiveGenomeSize
-    # )
-
-    # confidence_p_value = float(1) / sampleSize
-
-    # chromSizes: list of tuples
-    # chrom_sizes = [
-    #    (bam.references[i], bam.lengths[i]) for i in range(len(bam.references))
-    # ]
-    # chromSizes = [x for x in chromSizes if x[0] in tbit.chroms()] # why would you do this?
-    # There is a mapping specifically instead of tbit.chroms()
-
-    # max_read_dict = dict()
-    # min_read_dict = dict()
-    # for fragment_len in fragment_lengths:
-    #    # use poisson distribution to identify peaks that should be discarded.
-    #    # I multiply by 4, because the real distribution of reads
-    #    # vary depending on the gc content
-    #    # and the global number of reads per bp may a be too low.
-    #    # empirically, a value of at least 4 times as big as the
-    #    # reads_per_bp was found.
-    #    # Similarly for the min value, I divide by 4.
-    #    max_read_dict[fragment_len] = poisson(
-    #        4 * global_vars["reads_per_bp"] * fragment_len
-    #    ).isf(confidence_p_value)
-    #    # this may be of not use, unless the depth of sequencing is really high
-    #    # as this value is close to 0
-    #    min_read_dict[fragment_len] = poisson(
-    #        0.25 * global_vars["reads_per_bp"] * fragment_len
-    #    ).ppf(confidence_p_value)
-
-    # global_vars["max_reads"] = max_read_dict
-    # global_vars["min_reads"] = min_read_dict
-
     for key in global_vars:
         logger.debug(f"{key}: {global_vars[key]}")
+
+    ### determine chromosome names for downstream analysis
 
     # the chromosome names in chrom_dict/regions will be based on the bam file. For accessing tbit files, a mapping is needed.
     chr_name_bam_to_bit_mapping = map_chroms(
@@ -809,17 +791,50 @@ def main(
             if bam.references[i] in chr_name_bam_to_bit_mapping.keys()
         }
 
-    regions = get_regions(
-        genome=chrom_dict,
-        bam=bam,
-        nregions=sampleSize,
-        windowsize=1000,
-        blacklist=blacklistfile,
-        region=region,
-        seed=seed,
-    )
+    ### get regions for processing by sampling or by loading precomputed configuration
+    if precomputed_Ngc:
+        logger.info("Using precomputed background data.")
+        logger.debug("Reading precomputed background data.")
+        Ndata, param_dict = read_precomputed_table(precomputed_Ngc)
+        logger.debug("Validating blacklist hashes.")
+        bl_hash = param_dict["blacklist_hash"]
+        assert bl_hash == hash_file(
+            blacklistfile
+        ), "Blacklist does not match blacklist used in precomputing the background distribtuion. Please use matching blacklists!"
+        logger.debug("Checking parameters for compatibility with provided bam file.")
+        regions_params = param_dict["get_regions_params"]
+        bam_dict = chrom_dict.copy()
+        chrom_dict = regions_params["genome"]
+        if chrom_dict.keys() != bam_dict.keys():
+            precomputed_chrom_mapping = map_chroms(chrom_dict.keys(), bam_dict.keys())
+            chrom_dict = {
+                precomputed_chrom_mapping[key]: tuple(value)
+                for key, value in chrom_dict.items()
+            }
+            regions_params["genome"] = chrom_dict
+        else:
+            chrom_dict = {key: tuple(value) for key, value in chrom_dict.items()}
+            regions_params["genome"] = chrom_dict
+        logger.info(
+            f"Overwriting the following options: genome, sampleSize, region and seed"
+        )
+        logger.debug(f"params: {regions_params}")
+        sampleSize = regions_params["nregions"]
+        regions = get_regions(bam=bam, blacklist=blacklistfile, **regions_params)
+    else:
+        Ndata = None
+        regions = get_regions(
+            genome=chrom_dict,
+            bam=bam,
+            nregions=sampleSize,
+            windowsize=1000,
+            blacklist=blacklistfile,
+            region=region,
+            seed=seed,
+        )
 
-    sampleSize_regions = sampleSize / 1000
+
+    sampleSize_regions = int(max(1,sampleSize / 1000))
     regions = random.sample(regions, sampleSize_regions)
 
     logger.debug(f"regions contains {len(regions)} genomic coordinates")
