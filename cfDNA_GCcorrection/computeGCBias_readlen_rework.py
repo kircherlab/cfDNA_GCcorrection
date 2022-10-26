@@ -227,25 +227,50 @@ def tabulateGCcontent_wrapper(param_dict, *chunk):
     logger.debug(f"param_dict: {param_dict}\n chunk: {chunk}")
     logger.debug("Setting up wrapper dictionaries.")
 
-    wrapper_ndict = dict()
-    wrapper_fdict = dict()
+    F_GC_only = param_dict["F_GC_only"]
+    fragment_lengths = list(map(str, param_dict["fragment_lengths"]))
 
-    for task in flatten(chunk):
-        logger.debug(f"Calculating values for task: {task}")
-        subN_gc, subF_gc = tabulateGCcontent_worker(**task, **param_dict)
-        logger.debug(f"Updating wrapper dictionaries.")
-        wrapper_ndict = {
-            k: wrapper_ndict.get(k, 0) + subN_gc.get(k, np.zeros(100 + 1, dtype="int"))
-            for k in set(wrapper_ndict) | set(subN_gc)
-        }
-        wrapper_fdict = {
-            k: wrapper_fdict.get(k, 0) + subF_gc.get(k, np.zeros(100 + 1, dtype="int"))
-            for k in set(wrapper_fdict) | set(subN_gc)
-        }  # In this case, we use only read lengths that are in the defined fragment lengths, use subN_gc keys as proxy
+    if F_GC_only:
 
-    logger.debug("Returning dictionaries from wrapper.")
+        logger.debug(f"Calculating F_GC only.")
+        wrapper_fdict = dict()
 
-    return wrapper_ndict, wrapper_fdict
+        for task in flatten(chunk):
+            logger.debug(f"Calculating values for task: {task}")
+            subF_gc = tabulateGCcontent_worker(**task, **param_dict)
+            logger.debug(f"Updating wrapper dictionaries.")
+            wrapper_fdict = {
+                k: wrapper_fdict.get(k, 0)
+                + subF_gc.get(k, np.zeros(100 + 1, dtype="int"))
+                for k in set(wrapper_fdict) | set(fragment_lengths)
+            }  # In this case, we use only read lengths that are in the defined fragment lengths, use subN_gc keys as proxy
+
+        logger.debug("Returning dictionaries from wrapper.")
+
+        return wrapper_fdict
+
+    else:
+
+        wrapper_ndict = dict()
+        wrapper_fdict = dict()
+
+        for task in flatten(chunk):
+            logger.debug(f"Calculating values for task: {task}")
+            subN_gc, subF_gc = tabulateGCcontent_worker(**task, **param_dict)
+            logger.debug(f"Updating wrapper dictionaries.")
+            wrapper_ndict = {
+                k: wrapper_ndict.get(k, 0)
+                + subN_gc.get(k, np.zeros(100 + 1, dtype="int"))
+                for k in set(wrapper_ndict) | set(subN_gc)
+            }
+            wrapper_fdict = {
+                k: wrapper_fdict.get(k, 0)
+                + subF_gc.get(k, np.zeros(100 + 1, dtype="int"))
+                for k in set(wrapper_fdict) | set(fragment_lengths)
+            }  # In this case, we use only read lengths that are in the defined fragment lengths
+        logger.debug("Returning dictionaries from wrapper.")
+
+        return wrapper_ndict, wrapper_fdict
 
 
 def tabulateGCcontent_worker(
