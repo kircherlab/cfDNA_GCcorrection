@@ -322,19 +322,27 @@ def tabulateGCcontent(
     chr_name_bam_to_bit_mapping,
     stepSize=1,
     fragment_lengths=None,
+    Ndata=None,
     mp_type="MP",
     verbose=False,
 ):
 
     global global_vars
 
+    if isinstance(Ndata, pd.DataFrame):
+        F_GC_only = True
+    else:
+        F_GC_only = False
+
     param_dict = {
         "stepSize": stepSize,
         "fragment_lengths": fragment_lengths,
         "chr_name_bam_to_bit_mapping": chr_name_bam_to_bit_mapping,
         "verbose": verbose,
+        "F_GC_only": F_GC_only,
     }
 
+    # decide which of the multiprocessing backends to use
     if mp_type.lower() == "mp":
 
         TASKS = regions
@@ -373,24 +381,37 @@ def tabulateGCcontent(
             starmap_generator = ((param_dict, chunk) for chunk in TASKS)
             imap_res = starmap(tabulateGCcontent_wrapper, starmap_generator)
 
-    ndict = {
-        str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths
-    }  # dict()
-    fdict = {
-        str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths
-    }  # dict()
+    ## decide whether to aggregate F_GC or N_GC and F_GC
+    if F_GC_only:
+        fdict = {str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths}
 
-    for subN_gc, subF_gc in imap_res:
-        ndict = {
-            k: ndict.get(k, 0) + subN_gc.get(k, 0) for k in set(ndict) | set(subN_gc)
-        }
-        # fdict = {k: fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(fdict) | set(subF_gc)}
-        fdict = {
-            k: fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(fdict)
-        }  # In this case, we use only read lengths that are in the defined fragment lengths
+        for subF_gc in imap_res:
 
-    # create multi-index dict
-    data_dict = {"N_gc": ndict, "F_gc": fdict}
+            fdict = {
+                k: fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(fdict)
+            }  # In this case, we use only read lengths that are in the defined fragment lengths
+
+        # create multi-index dict
+        data_dict = {"F_gc": fdict}
+
+    else:
+
+        ndict = {str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths}
+        fdict = {str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths}
+
+        for subN_gc, subF_gc in imap_res:
+            ndict = {
+                k: ndict.get(k, 0) + subN_gc.get(k, 0)
+                for k in set(ndict) | set(subN_gc)
+            }
+            # fdict = {k: fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(fdict) | set(subF_gc)}
+            fdict = {
+                k: fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(fdict)
+            }  # In this case, we use only read lengths that are in the defined fragment lengths
+
+        # create multi-index dict
+        data_dict = {"N_gc": ndict, "F_gc": fdict}
+
     multi_index_dict = {
         (i, j): data_dict[i][j] for i in data_dict.keys() for j in data_dict[i].keys()
     }
@@ -400,6 +421,7 @@ def tabulateGCcontent(
         data.index.levels[-1].astype(int), level=-1
     )  # set length index to integer for proper sorting
     data.sort_index(inplace=True)
+    data.columns = data.columns.astype(str)
 
     # filter data for standard values (all zero), except for first and last column
     Fdata = data.loc["F_gc"]
@@ -407,7 +429,12 @@ def tabulateGCcontent(
         Fdata.index.isin(Fdata.index[[0, -1]]) | (Fdata != 0).any(axis=1)
     ]
     Fdata_multiindex = pd.concat({"F_gc": Fdata_filtered})
-    Ndata = data.loc["N_gc"]
+
+    if F_GC_only:
+        Ndata = Ndata.loc["N_gc"]
+    else:
+        Ndata = data.loc["N_gc"]
+
     Ndata_filtered = Ndata.loc[
         Ndata.index.isin(Ndata.index[[0, -1]]) | (Ndata != 0).any(axis=1)
     ]
