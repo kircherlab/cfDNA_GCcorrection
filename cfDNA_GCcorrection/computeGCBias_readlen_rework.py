@@ -255,43 +255,23 @@ def tabulateGCcontent_worker(
     chr_name_bam_to_bit_mapping,
     stepSize=1,
     fragment_lengths=None,
+    F_GC_only=False,
     verbose=False,
 ):
 
     tbit = py2bit.open(global_vars["2bit"])
     bam = bamHandler.openBam(global_vars["bam"])
 
-    if not fragment_lengths:
-        # print("no fragment lengths specified, using measured")
-        sub_Fdict = get_F_GC(
-            chrom,
-            start,
-            end,
-            bam=bam,
-            reference=tbit,
-            chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
-        )
-        frag_lens = tuple(int(x) for x in sub_Fdict.keys())
-        sub_Ndict = get_N_GC(
-            chrom,
-            start,
-            end,
-            reference=tbit,
-            steps=stepSize,
-            fragment_lengths=frag_lens,
-            verbose=verbose,
-        )
+    sub_Fdict = get_F_GC(
+        chrom,
+        start,
+        end,
+        bam=bam,
+        reference=tbit,
+        chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
+    )
+    if not F_GC_only:
 
-    else:
-        # print(f"using fragment lengths: {fragment_lengths}")
-        sub_Fdict = get_F_GC(
-            chrom,
-            start,
-            end,
-            bam=bam,
-            reference=tbit,
-            chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
-        )
         sub_Ndict = get_N_GC(
             chrom,
             start,
@@ -302,7 +282,10 @@ def tabulateGCcontent_worker(
             verbose=verbose,
             chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
         )
-    return sub_Ndict, sub_Fdict
+
+        return sub_Ndict, sub_Fdict
+    else:
+        return sub_Fdict
 
 
 ###### wrap all measurement functions in meta function ######
@@ -711,9 +694,7 @@ def main(
     mp_type,
 ):
 
-    # if debug:
-    #    passed_args=locals()
-    #    print(passed_args)
+    ### initial setup
 
     if debug:
         debug_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>process: {process}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
@@ -850,6 +831,7 @@ def main(
         regions=regions,
         fragment_lengths=fragment_lengths,
         mp_type=mp_type,
+        Ndata=Ndata,
     )
     # change the way data is handled
     if interpolate:
