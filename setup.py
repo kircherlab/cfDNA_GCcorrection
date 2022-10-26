@@ -65,7 +65,7 @@ setup(
     author='Sebastian Röner',
     author_email='sebastian.roener@bih-charite.de',
     packages=find_packages(),
-    scripts=['bin/computeGCBias_readlen','bin/correctGCBias_readlen', 'bin/computeGCBias_readlen_rework'],
+    scripts=['bin/computeGCBias_readlen','bin/correctGCBias_readlen', 'bin/computeGCBias_readlen_rework','bin/computeGCBias_background'],
     include_package_data=True,
     url='http://pypi.python.org/pypi/cfDNA_GCcorrection/',
     license='LICENSE.txt',
