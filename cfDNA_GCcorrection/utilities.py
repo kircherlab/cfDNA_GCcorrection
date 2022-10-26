@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-from cfDNA_GCcorrection import cm  # noqa: F401
+#from cfDNA_GCcorrection import cm  # noqa: F401
 
 debug = 0
 
@@ -267,22 +267,22 @@ def smartLabels(labels):
     return [smartLabel(x) for x in labels]
 
 
-def convertCmap(c, vmin=0, vmax=1):
-    cmap = mpl.cm.get_cmap(c)
-    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
-    cmap_rgb = []
-
-    for i in range(255):
-        k = mpl.colors.colorConverter.to_rgb(cmap(norm(i)))
-        cmap_rgb.append(k)
-
-    h = 1.0 / 254
-    colorScale = []
-    for k in range(255):
-        C = list(map(np.uint8, np.array(cmap(k * h)[:3]) * 255))
-        colorScale.append([k * h, "rgb" + str((C[0], C[1], C[2]))])
-
-    return colorScale
+#def convertCmap(c, vmin=0, vmax=1):
+#    cmap = mpl.cm.get_cmap(c)
+#    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+#    cmap_rgb = []
+#
+#    for i in range(255):
+#        k = mpl.colors.colorConverter.to_rgb(cmap(norm(i)))
+#        cmap_rgb.append(k)
+#
+#    h = 1.0 / 254
+#    colorScale = []
+#    for k in range(255):
+#        C = list(map(np.uint8, np.array(cmap(k * h)[:3]) * 255))
+#        colorScale.append([k * h, "rgb" + str((C[0], C[1], C[2]))])
+#
+#    return colorScale
 
 
 def getTLen(read, notAbs=False):
