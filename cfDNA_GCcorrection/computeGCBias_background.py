@@ -14,7 +14,8 @@ from itertools import starmap
 import click
 import numpy as np
 import pandas as pd
-#from cfDNA_GCcorrection.parserCommon import output
+
+# from cfDNA_GCcorrection.parserCommon import output
 import py2bit
 import pybedtools as pbt
 from csaps import csaps
@@ -24,8 +25,12 @@ from mpire.utils import chunk_tasks
 from scipy.stats import poisson
 
 from cfDNA_GCcorrection import bamHandler
-from cfDNA_GCcorrection.utilities import (getGC_content, hash_file, map_chroms,
-                                          write_precomputed_table)
+from cfDNA_GCcorrection.utilities import (
+    getGC_content,
+    hash_file,
+    map_chroms,
+    write_precomputed_table,
+)
 
 ###### Set constants ######
 
@@ -549,6 +554,9 @@ def main(
         seed=seed,
     )
 
+    sampleSize_regions = sampleSize / 1000
+    regions = random.sample(regions, sampleSize_regions)
+
     logger.debug(f"regions contains {len(regions)} genomic coordinates")
     # logger.info("computing frequencies")
     logger.info("Computing frequencies...")
@@ -580,9 +588,7 @@ def main(
     else:
         out_dict = {"blacklist_hash": None, "get_regions_params": region_params}
 
-    write_precomputed_table(
-        df=data, params_dict=out_dict, filename=output_file
-    )
+    write_precomputed_table(df=data, params_dict=out_dict, filename=output_file)
 
 
 if __name__ == "__main__":

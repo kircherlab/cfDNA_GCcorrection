@@ -130,7 +130,16 @@ def roundGCLenghtBias(gc):
     return int(gc_new)
 
 
-def get_N_GC(chrom, start, end, reference, fragment_lengths, chr_name_bam_to_bit_mapping, steps=1, verbose=False):
+def get_N_GC(
+    chrom,
+    start,
+    end,
+    reference,
+    fragment_lengths,
+    chr_name_bam_to_bit_mapping,
+    steps=1,
+    verbose=False,
+):
     sub_Ndict = dict()
     tbit_chrom = chr_name_bam_to_bit_mapping[chrom]
     logger.debug(f"chrom: {chrom}; mapped tbit_chrom: {tbit_chrom}")
@@ -151,7 +160,9 @@ def get_N_GC(chrom, start, end, reference, fragment_lengths, chr_name_bam_to_bit
     return sub_Ndict
 
 
-def get_F_GC(chrom, start, end, bam, reference, chr_name_bam_to_bit_mapping, verbose=False):
+def get_F_GC(
+    chrom, start, end, bam, reference, chr_name_bam_to_bit_mapping, verbose=False
+):
     sub_Fdict = defaultdict(lambda: np.zeros(100 + 1, dtype="int"))
     tbit_chrom = chr_name_bam_to_bit_mapping[chrom]
     logger.debug(f"chrom: {chrom}; mapped tbit_chrom: {tbit_chrom}")
@@ -206,7 +217,7 @@ def get_F_GC(chrom, start, end, bam, reference, chr_name_bam_to_bit_mapping, ver
 ###### worker definition for ray ######
 
 
-def tabulateGCcontent_wrapper(param_dict,*chunk):
+def tabulateGCcontent_wrapper(param_dict, *chunk):
     logger.debug(f"Worker starting to work on chunk: {chunk}")
     logger.debug(f"param_dict: {param_dict}\n chunk: {chunk}")
     logger.debug("Setting up wrapper dictionaries.")
@@ -216,7 +227,7 @@ def tabulateGCcontent_wrapper(param_dict,*chunk):
 
     for task in flatten(chunk):
         logger.debug(f"Calculating values for task: {task}")
-        subN_gc, subF_gc = tabulateGCcontent_worker(**task,**param_dict)
+        subN_gc, subF_gc = tabulateGCcontent_worker(**task, **param_dict)
         logger.debug(f"Updating wrapper dictionaries.")
         wrapper_ndict = {
             k: wrapper_ndict.get(k, 0) + subN_gc.get(k, np.zeros(100 + 1, dtype="int"))
@@ -247,7 +258,14 @@ def tabulateGCcontent_worker(
 
     if not fragment_lengths:
         # print("no fragment lengths specified, using measured")
-        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit, chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping)
+        sub_Fdict = get_F_GC(
+            chrom,
+            start,
+            end,
+            bam=bam,
+            reference=tbit,
+            chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
+        )
         frag_lens = tuple(int(x) for x in sub_Fdict.keys())
         sub_Ndict = get_N_GC(
             chrom,
@@ -261,7 +279,14 @@ def tabulateGCcontent_worker(
 
     else:
         # print(f"using fragment lengths: {fragment_lengths}")
-        sub_Fdict = get_F_GC(chrom, start, end, bam=bam, reference=tbit, chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping)
+        sub_Fdict = get_F_GC(
+            chrom,
+            start,
+            end,
+            bam=bam,
+            reference=tbit,
+            chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
+        )
         sub_Ndict = get_N_GC(
             chrom,
             start,
@@ -270,7 +295,7 @@ def tabulateGCcontent_worker(
             steps=stepSize,
             fragment_lengths=fragment_lengths,
             verbose=verbose,
-            chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping
+            chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
         )
     return sub_Ndict, sub_Fdict
 
@@ -297,9 +322,8 @@ def tabulateGCcontent(
         "verbose": verbose,
     }
 
-
     if mp_type.lower() == "mp":
-        
+
         TASKS = regions
         if len(TASKS) > 1 and num_cpus > 1:
             logger.info("Using python multiprocessing!")
@@ -310,7 +334,7 @@ def tabulateGCcontent(
             starmap_generator = ((param_dict, chunk) for chunk in chunked_tasks)
             pool = multiprocessing.Pool(num_cpus)
             imap_res = pool.starmap_async(
-                tabulateGCcontent_wrapper,starmap_generator, chunksize=1
+                tabulateGCcontent_wrapper, starmap_generator, chunksize=1
             ).get(9999999)
             pool.close()
             pool.join()
@@ -335,7 +359,6 @@ def tabulateGCcontent(
         else:
             starmap_generator = ((param_dict, chunk) for chunk in TASKS)
             imap_res = starmap(tabulateGCcontent_wrapper, starmap_generator)
-
 
     ndict = {
         str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths
@@ -367,12 +390,16 @@ def tabulateGCcontent(
 
     # filter data for standard values (all zero), except for first and last column
     Fdata = data.loc["F_gc"]
-    Fdata_filtered = Fdata.loc[Fdata.index.isin(Fdata.index[[0,-1]]) | (Fdata != 0).any(axis=1)]
-    Fdata_multiindex = pd.concat({"F_gc":Fdata_filtered})
+    Fdata_filtered = Fdata.loc[
+        Fdata.index.isin(Fdata.index[[0, -1]]) | (Fdata != 0).any(axis=1)
+    ]
+    Fdata_multiindex = pd.concat({"F_gc": Fdata_filtered})
     Ndata = data.loc["N_gc"]
-    Ndata_filtered = Ndata.loc[Ndata.index.isin(Ndata.index[[0,-1]]) | (Ndata != 0).any(axis=1)]
-    Ndata_multiindex = pd.concat({"N_gc":Ndata_filtered})
-    filtered_data = pd.concat([Ndata_multiindex,Fdata_multiindex])
+    Ndata_filtered = Ndata.loc[
+        Ndata.index.isin(Ndata.index[[0, -1]]) | (Ndata != 0).any(axis=1)
+    ]
+    Ndata_multiindex = pd.concat({"N_gc": Ndata_filtered})
+    filtered_data = pd.concat([Ndata_multiindex, Fdata_multiindex])
 
     return filtered_data
 
@@ -718,8 +745,6 @@ def main(
 
     fragment_lengths = np.arange(minlen, maxlen + 1, length_step).tolist()
 
-
-
     # global_vars["genome_size"] = sum(tbit.chroms().values())
     # global_vars["total_reads"] = mapped
     # global_vars["reads_per_bp"] = (
@@ -761,7 +786,12 @@ def main(
         logger.debug(f"{key}: {global_vars[key]}")
 
     # the chromosome names in chrom_dict/regions will be based on the bam file. For accessing tbit files, a mapping is needed.
-    chr_name_bam_to_bit_mapping = map_chroms(bam.references, list(tbit.chroms().keys()), ref_name="bam file", target_name="2bit reference file" )
+    chr_name_bam_to_bit_mapping = map_chroms(
+        bam.references,
+        list(tbit.chroms().keys()),
+        ref_name="bam file",
+        target_name="2bit reference file",
+    )
 
     if standard_chroms:
         # get valid chromosomes and their lenght as dict that can be used by pybedtools and filter for human standard chromosomes.
@@ -769,11 +799,14 @@ def main(
         chrom_dict = {
             bam.references[i]: (0, bam.lengths[i])
             for i in range(len(bam.references))
-            if bam.references[i] in STANDARD_CHROMOSOMES and chr_name_bam_to_bit_mapping.keys()
+            if bam.references[i] in STANDARD_CHROMOSOMES
+            and chr_name_bam_to_bit_mapping.keys()
         }
     else:
         chrom_dict = {
-        bam.references[i]: (0, bam.lengths[i]) for i in range(len(bam.references)) if bam.references[i] in chr_name_bam_to_bit_mapping.keys()
+            bam.references[i]: (0, bam.lengths[i])
+            for i in range(len(bam.references))
+            if bam.references[i] in chr_name_bam_to_bit_mapping.keys()
         }
 
     regions = get_regions(
@@ -786,6 +819,8 @@ def main(
         seed=seed,
     )
 
+    sampleSize_regions = sampleSize / 1000
+    regions = random.sample(regions, sampleSize_regions)
 
     logger.debug(f"regions contains {len(regions)} genomic coordinates")
     # logger.info("computing frequencies")
