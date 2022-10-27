@@ -554,7 +554,7 @@ def main(
         seed=seed,
     )
 
-    sampleSize_regions = sampleSize / 1000
+    sampleSize_regions = int(max(1,sampleSize / 1000))
     regions = random.sample(regions, sampleSize_regions)
 
     logger.debug(f"regions contains {len(regions)} genomic coordinates")
