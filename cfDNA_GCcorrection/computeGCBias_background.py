@@ -558,7 +558,6 @@ def main(
     regions = random.sample(regions, sampleSize_regions)
 
     logger.debug(f"regions contains {len(regions)} genomic coordinates")
-    # logger.info("computing frequencies")
     logger.info("Computing frequencies...")
     # the GC of the genome is sampled each stepSize bp.
     # step_size = max(int(global_vars["genome_size"] / sampleSize), 1)
