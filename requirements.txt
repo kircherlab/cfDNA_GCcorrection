@@ -9,3 +9,8 @@ pyBigWig>=0.2.1
 plotly>=4.9
 deeptoolsintervals>=0.1.8
 csaps
+ray
+pybedtools
+click
+mprie
+loguru

@@ -11,10 +11,11 @@ from collections import defaultdict
 from collections.abc import Sequence
 from itertools import starmap
 
-
 import click
 import numpy as np
 import pandas as pd
+
+# from cfDNA_GCcorrection.parserCommon import output
 import py2bit
 import pybedtools as pbt
 from csaps import csaps
@@ -26,9 +27,9 @@ from scipy.stats import poisson
 from cfDNA_GCcorrection import bamHandler
 from cfDNA_GCcorrection.utilities import (
     getGC_content,
-    map_chroms,
     hash_file,
-    read_precomputed_table,
+    map_chroms,
+    write_precomputed_table,
 )
 
 ###### Set constants ######
@@ -165,112 +166,28 @@ def get_N_GC(
     return sub_Ndict
 
 
-def get_F_GC(
-    chrom, start, end, bam, reference, chr_name_bam_to_bit_mapping, verbose=False
-):
-    sub_Fdict = defaultdict(lambda: np.zeros(100 + 1, dtype="int"))
-    tbit_chrom = chr_name_bam_to_bit_mapping[chrom]
-    logger.debug(f"chrom: {chrom}; mapped tbit_chrom: {tbit_chrom}")
-    for read in bam.fetch(chrom, start, end):
-        r_len = 0
-        if (
-            read.reference_start >= start
-            and read.reference_end is not None
-            and read.reference_end <= end
-        ):  # check for none, some reads are faulty and return None!
-            if (
-                read.is_proper_pair and read.next_reference_start > read.reference_start
-            ):  # is proper pair and only counted once! is this the same as read.mate_is_reverse?
-                r_len = abs(read.template_length)
-                try:
-                    gc = getGC_content(
-                        reference,
-                        tbit_chrom,
-                        read.reference_start,
-                        read.reference_end,
-                        fraction=True,
-                    )
-                    gc = roundGCLenghtBias(gc)
-                except Exception as detail:
-                    if verbose:
-                        logger.exception(detail)
-                    continue
-                sub_Fdict[str(r_len)][gc] += 1
-            elif not read.is_paired:
-                r_len = read.query_length
-                try:
-                    gc = getGC_content(
-                        reference,
-                        tbit_chrom,
-                        read.reference_start,
-                        read.reference_end,
-                        fraction=True,
-                    )
-                    gc = roundGCLenghtBias(gc)
-                except Exception as detail:
-                    if verbose:
-                        logger.exception(detail)
-                    continue
-                sub_Fdict[str(r_len)][gc] += 1
-            else:
-                continue
-        else:
-            continue
-    return dict(sub_Fdict)
-
-
 ###### worker definition for ray ######
 
 
 def tabulateGCcontent_wrapper(param_dict, *chunk):
     logger.debug(f"Worker starting to work on chunk: {chunk}")
     logger.debug(f"param_dict: {param_dict}\n chunk: {chunk}")
-    logger.debug("Setting up wrapper dictionaries.")
+    logger.debug("Setting up wrapper dictionary.")
 
-    F_GC_only = param_dict["F_GC_only"]
-    fragment_lengths = list(map(str, param_dict["fragment_lengths"]))
+    wrapper_ndict = dict()
 
-    if F_GC_only:
+    for task in flatten(chunk):
+        logger.debug(f"Calculating values for task: {task}")
+        subN_gc = tabulateGCcontent_worker(**task, **param_dict)
+        logger.debug(f"Updating wrapper dictionaries.")
+        wrapper_ndict = {
+            k: wrapper_ndict.get(k, 0) + subN_gc.get(k, np.zeros(100 + 1, dtype="int"))
+            for k in set(wrapper_ndict) | set(subN_gc)
+        }
 
-        logger.debug(f"Calculating F_GC only.")
-        wrapper_fdict = dict()
+    logger.debug("Returning dictionary from wrapper.")
 
-        for task in flatten(chunk):
-            logger.debug(f"Calculating values for task: {task}")
-            subF_gc = tabulateGCcontent_worker(**task, **param_dict)
-            logger.debug(f"Updating wrapper dictionaries.")
-            wrapper_fdict = {
-                k: wrapper_fdict.get(k, 0)
-                + subF_gc.get(k, np.zeros(100 + 1, dtype="int"))
-                for k in set(wrapper_fdict) | set(fragment_lengths)
-            }  # In this case, we use only read lengths that are in the defined fragment lengths, use subN_gc keys as proxy
-
-        logger.debug("Returning dictionaries from wrapper.")
-
-        return wrapper_fdict
-
-    else:
-
-        wrapper_ndict = dict()
-        wrapper_fdict = dict()
-
-        for task in flatten(chunk):
-            logger.debug(f"Calculating values for task: {task}")
-            subN_gc, subF_gc = tabulateGCcontent_worker(**task, **param_dict)
-            logger.debug(f"Updating wrapper dictionaries.")
-            wrapper_ndict = {
-                k: wrapper_ndict.get(k, 0)
-                + subN_gc.get(k, np.zeros(100 + 1, dtype="int"))
-                for k in set(wrapper_ndict) | set(subN_gc)
-            }
-            wrapper_fdict = {
-                k: wrapper_fdict.get(k, 0)
-                + subF_gc.get(k, np.zeros(100 + 1, dtype="int"))
-                for k in set(wrapper_fdict) | set(fragment_lengths)
-            }  # In this case, we use only read lengths that are in the defined fragment lengths
-        logger.debug("Returning dictionaries from wrapper.")
-
-        return wrapper_ndict, wrapper_fdict
+    return wrapper_ndict
 
 
 def tabulateGCcontent_worker(
@@ -280,37 +197,24 @@ def tabulateGCcontent_worker(
     chr_name_bam_to_bit_mapping,
     stepSize=1,
     fragment_lengths=None,
-    F_GC_only=False,
     verbose=False,
 ):
 
     tbit = py2bit.open(global_vars["2bit"])
     bam = bamHandler.openBam(global_vars["bam"])
 
-    sub_Fdict = get_F_GC(
+    # print(f"using fragment lengths: {fragment_lengths}")
+    sub_Ndict = get_N_GC(
         chrom,
         start,
         end,
-        bam=bam,
         reference=tbit,
+        steps=stepSize,
+        fragment_lengths=fragment_lengths,
+        verbose=verbose,
         chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
     )
-    if not F_GC_only:
-
-        sub_Ndict = get_N_GC(
-            chrom,
-            start,
-            end,
-            reference=tbit,
-            steps=stepSize,
-            fragment_lengths=fragment_lengths,
-            verbose=verbose,
-            chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
-        )
-
-        return sub_Ndict, sub_Fdict
-    else:
-        return sub_Fdict
+    return sub_Ndict
 
 
 ###### wrap all measurement functions in meta function ######
@@ -322,27 +226,19 @@ def tabulateGCcontent(
     chr_name_bam_to_bit_mapping,
     stepSize=1,
     fragment_lengths=None,
-    Ndata=None,
     mp_type="MP",
     verbose=False,
 ):
 
     global global_vars
 
-    if isinstance(Ndata, pd.DataFrame):
-        F_GC_only = True
-    else:
-        F_GC_only = False
-
     param_dict = {
         "stepSize": stepSize,
         "fragment_lengths": fragment_lengths,
         "chr_name_bam_to_bit_mapping": chr_name_bam_to_bit_mapping,
         "verbose": verbose,
-        "F_GC_only": F_GC_only,
     }
 
-    # decide which of the multiprocessing backends to use
     if mp_type.lower() == "mp":
 
         TASKS = regions
@@ -381,37 +277,20 @@ def tabulateGCcontent(
             starmap_generator = ((param_dict, chunk) for chunk in TASKS)
             imap_res = starmap(tabulateGCcontent_wrapper, starmap_generator)
 
-    ## decide whether to aggregate F_GC or N_GC and F_GC
-    if F_GC_only:
-        fdict = {str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths}
+    ndict = {
+        str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths
+    }  # dict()
 
-        for subF_gc in imap_res:
+    for subN_gc in imap_res:
+        ndict = {
+            k: ndict.get(k, 0) + subN_gc.get(k, 0) for k in set(ndict) | set(subN_gc)
+        }
+        # fdict = {k: fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(fdict) | set(subF_gc)}
 
-            fdict = {
-                k: fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(fdict)
-            }  # In this case, we use only read lengths that are in the defined fragment lengths
-
-        # create multi-index dict
-        data_dict = {"F_gc": fdict}
-
-    else:
-
-        ndict = {str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths}
-        fdict = {str(key): np.zeros(100 + 1, dtype="int") for key in fragment_lengths}
-
-        for subN_gc, subF_gc in imap_res:
-            ndict = {
-                k: ndict.get(k, 0) + subN_gc.get(k, 0)
-                for k in set(ndict) | set(subN_gc)
-            }
-            # fdict = {k: fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(fdict) | set(subF_gc)}
-            fdict = {
-                k: fdict.get(k, 0) + subF_gc.get(k, 0) for k in set(fdict)
-            }  # In this case, we use only read lengths that are in the defined fragment lengths
-
-        # create multi-index dict
-        data_dict = {"N_gc": ndict, "F_gc": fdict}
-
+    # create multi-index dict
+    data_dict = {
+        "N_gc": ndict,
+    }
     multi_index_dict = {
         (i, j): data_dict[i][j] for i in data_dict.keys() for j in data_dict[i].keys()
     }
@@ -421,149 +300,15 @@ def tabulateGCcontent(
         data.index.levels[-1].astype(int), level=-1
     )  # set length index to integer for proper sorting
     data.sort_index(inplace=True)
-    data.columns = data.columns.astype(str)
 
     # filter data for standard values (all zero), except for first and last column
-    Fdata = data.loc["F_gc"]
-    Fdata_filtered = Fdata.loc[
-        Fdata.index.isin(Fdata.index[[0, -1]]) | (Fdata != 0).any(axis=1)
-    ]
-    Fdata_multiindex = pd.concat({"F_gc": Fdata_filtered})
-
-    if F_GC_only:
-        Ndata = Ndata.loc["N_gc"]
-    else:
-        Ndata = data.loc["N_gc"]
-
+    Ndata = data.loc["N_gc"]
     Ndata_filtered = Ndata.loc[
         Ndata.index.isin(Ndata.index[[0, -1]]) | (Ndata != 0).any(axis=1)
     ]
     Ndata_multiindex = pd.concat({"N_gc": Ndata_filtered})
-    filtered_data = pd.concat([Ndata_multiindex, Fdata_multiindex])
 
-    return filtered_data
-
-
-###### Processing mesured values either raw or with interpolation ######
-
-
-def interpolate_ratio_csaps(df, smooth=None, normalized=False):
-    # separate hypothetical read density from measured read density
-    N_GC = df.loc["N_gc"]
-    F_GC = df.loc["F_gc"]
-
-    # get min and max values
-    N_GC_min, N_GC_max = np.nanmin(N_GC.index.astype("int")), np.nanmax(
-        N_GC.index.astype("int")
-    )
-    F_GC_min, F_GC_max = np.nanmin(F_GC.index.astype("int")), np.nanmax(
-        F_GC.index.astype("int")
-    )
-
-    # sparse grid for hypothetical read density
-    N_GC_readlen = N_GC.index.to_numpy(dtype=int)
-    N_GC_gc = N_GC.columns.to_numpy(dtype=int)
-
-    # sparse grid for measured read density
-    F_GC_readlen = F_GC.index.to_numpy(dtype=int)
-    F_GC_gc = F_GC.columns.to_numpy(dtype=int)
-
-    N_f2 = csaps(
-        [N_GC_readlen, N_GC_gc],
-        N_GC.to_numpy(),
-        smooth=smooth,
-        normalizedsmooth=normalized,
-    )
-    F_f2 = csaps(
-        [F_GC_readlen, F_GC_gc],
-        F_GC.to_numpy(),
-        smooth=smooth,
-        normalizedsmooth=normalized,
-    )
-
-    scaling_dict = dict()
-    for i in np.arange(N_GC_min, N_GC_max + 1, 1):
-        readlen_tmp = i
-        N_tmp = N_f2([readlen_tmp, N_GC_gc])
-        F_tmp = F_f2([readlen_tmp, F_GC_gc])
-        scaling_dict[i] = int(np.sum(N_tmp) / np.sum(F_tmp))
-
-    # get dense data (full GC and readlen range)
-    N_a, N_b = np.meshgrid(
-        np.arange(N_GC_min, N_GC_max + 1, 1), N_GC.columns.to_numpy(dtype=int)
-    )
-    F_a, F_b = np.meshgrid(
-        np.arange(F_GC_min, N_GC_max + 1, 1), F_GC.columns.to_numpy(dtype=int)
-    )
-    # convert to 2D coordinate pairs
-    N_dense_points = np.stack([N_a.ravel(), N_b.ravel()], -1)
-
-    r_list = list()
-    f_list = list()
-    n_list = list()
-    for i in N_dense_points:
-        x = i.tolist()
-        scaling = scaling_dict[x[0]]
-        if (N_f2(x)).astype(int) > 0 and (F_f2(x)).astype(int) > 0:
-            ratio = int(F_f2(x)) / int(N_f2(x)) * scaling
-        else:
-            ratio = 1
-        f_list.append(int(F_f2(x)))
-        n_list.append(int(N_f2(x)))
-        r_list.append(ratio)
-
-    ratio_dense = np.array(r_list).reshape(N_a.shape).T
-    F_dense = np.array(f_list).reshape(N_a.shape).T
-    N_dense = np.array(n_list).reshape(N_a.shape).T
-
-    # create indices for distributions
-    ind_N = pd.MultiIndex.from_product([["N_gc"], np.arange(N_GC_min, N_GC_max + 1, 1)])
-    ind_F = pd.MultiIndex.from_product([["F_gc"], np.arange(N_GC_min, N_GC_max + 1, 1)])
-    ind_R = pd.MultiIndex.from_product([["R_gc"], np.arange(N_GC_min, N_GC_max + 1, 1)])
-    # numpy to dataframe with indices
-    NInt_df = pd.DataFrame(N_dense, columns=N_GC.columns, index=ind_N)
-    FInt_df = pd.DataFrame(F_dense, columns=N_GC.columns, index=ind_F)
-    RInt_df = pd.DataFrame(ratio_dense, columns=N_GC.columns, index=ind_R)
-
-    return pd.concat(
-        [NInt_df, FInt_df, RInt_df]
-    )  # NInt_df.append(FInt_df).append(RInt_df)
-
-
-def get_ratio(df):
-    # separate hypothetical read density from measured read density
-    N_GC = df.loc["N_gc"]
-    F_GC = df.loc["F_gc"]
-    # get min and max values
-    # N_GC_min, N_GC_max = np.nanmin(N_GC.index.astype("int")), np.nanmax(N_GC.index.astype("int"))  # not used
-    # F_GC_min, F_GC_max = np.nanmin(F_GC.index.astype("int")), np.nanmax(F_GC.index.astype("int"))  # not used
-
-    scaling_dict = dict()
-    for i in N_GC.index:
-        n_tmp = N_GC.loc[i].to_numpy()
-        f_tmp = F_GC.loc[i].to_numpy()
-        scaling_dict[i] = float(np.sum(n_tmp)) / float(np.sum(f_tmp))
-
-    r_dict = dict()
-    for i in N_GC.index:
-        scaling = scaling_dict[i]
-        f_gc_t = F_GC.loc[i]
-        n_gc_t = N_GC.loc[i]
-        r_gc_t = np.array(
-            [
-                float(f_gc_t[x]) / n_gc_t[x] * scaling
-                if n_gc_t[x] and f_gc_t[x] > 0
-                else 1
-                for x in range(len(f_gc_t))
-            ]
-        )
-        r_dict[i] = r_gc_t
-
-    ratio_dense = pd.DataFrame.from_dict(r_dict, orient="index", columns=N_GC.columns)
-    ind = pd.MultiIndex.from_product([["R_gc"], ratio_dense.index])
-    ratio_dense.index = ind
-
-    return ratio_dense
+    return Ndata_multiindex
 
 
 ###### This part is the command line interface and main function ######
@@ -593,16 +338,16 @@ def get_ratio(df):
             http://hgdownload.cse.ucsc.edu/admin/exe/""",
 )
 @click.option(
-    "--GCbiasFrequenciesFile",
-    "-freq",
+    "--output",
     "-o",
-    "gcbias_frequency_output",
+    "output_file",
     required=True,
     type=click.Path(writable=True),
     help="""Path to save the file containing 
-            the observed and expected read frequencies per %%GC-
-            content. This file is needed to run the 
-            correctGCBias tool. This is a tab separated file.""",
+            the expected read frequencies per %%GC-
+            content. This file can be provided as precomputed 
+            background to the computeGCBias_readlen script. 
+            This is a tab separated file.""",
 )
 @click.option(
     "--num_cpus",
@@ -652,25 +397,6 @@ def get_ratio(df):
     help="""Interpolates GC values and correction for missing read lengths.
             This might substantially reduce computation time, but might lead to
             less accurate results. Deactivated by default.""",
-)
-@click.option(
-    "--precomputed_background",
-    "-pb",
-    "precomputed_Ngc",
-    type=click.Path(exists=True, readable=True),
-    default=None,
-    help="""A tsv. file containing parameters and a precomputed background 
-    distribution created by the computeGCbias_background script. 
-    Some command line options are overwritten make background and read distribution
-    comparable. Make sure that genome builds match!""",
-)
-@click.option(
-    "--MeasurementOutput",
-    "-MO",
-    "measurement_output",
-    type=click.Path(writable=True),
-    help="""Writes measured values to an output file.
-            This option is only active is Interpolation is activated.""",
 )
 @click.option(
     "--sampleSize",
@@ -728,14 +454,12 @@ def get_ratio(df):
 def main(
     bamfile,
     genome,
-    gcbias_frequency_output,
+    output_file,
     num_cpus,
     minlen,
     maxlen,
     lengthStep,
     interpolate,
-    measurement_output,
-    precomputed_Ngc,
     sampleSize,
     blacklistfile,
     region,
@@ -745,8 +469,6 @@ def main(
     seed,
     mp_type,
 ):
-
-    ### initial setup
 
     if debug:
         debug_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>process: {process}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
@@ -798,8 +520,6 @@ def main(
     for key in global_vars:
         logger.debug(f"{key}: {global_vars[key]}")
 
-    ### determine chromosome names for downstream analysis
-
     # the chromosome names in chrom_dict/regions will be based on the bam file. For accessing tbit files, a mapping is needed.
     chr_name_bam_to_bit_mapping = map_chroms(
         bam.references,
@@ -824,54 +544,20 @@ def main(
             if bam.references[i] in chr_name_bam_to_bit_mapping.keys()
         }
 
-    ### get regions for processing by sampling or by loading precomputed configuration
-    if precomputed_Ngc:
-        logger.info("Using precomputed background data.")
-        logger.debug("Reading precomputed background data.")
-        Ndata, param_dict = read_precomputed_table(precomputed_Ngc)
-        logger.debug("Validating blacklist hashes.")
-        bl_hash = param_dict["blacklist_hash"]
-        assert bl_hash == hash_file(
-            blacklistfile
-        ), "Blacklist does not match blacklist used in precomputing the background distribtuion. Please use matching blacklists!"
-        logger.debug("Checking parameters for compatibility with provided bam file.")
-        regions_params = param_dict["get_regions_params"]
-        bam_dict = chrom_dict.copy()
-        chrom_dict = regions_params["genome"]
-        if chrom_dict.keys() != bam_dict.keys():
-            precomputed_chrom_mapping = map_chroms(chrom_dict.keys(), bam_dict.keys())
-            chrom_dict = {
-                precomputed_chrom_mapping[key]: tuple(value)
-                for key, value in chrom_dict.items()
-            }
-            regions_params["genome"] = chrom_dict
-        else:
-            chrom_dict = {key: tuple(value) for key, value in chrom_dict.items()}
-            regions_params["genome"] = chrom_dict
-        logger.info(
-            f"Overwriting the following options: genome, sampleSize, region and seed"
-        )
-        logger.debug(f"params: {regions_params}")
-        sampleSize = regions_params["nregions"]
-        regions = get_regions(bam=bam, blacklist=blacklistfile, **regions_params)
-    else:
-        Ndata = None
-        regions = get_regions(
-            genome=chrom_dict,
-            bam=bam,
-            nregions=sampleSize,
-            windowsize=1000,
-            blacklist=blacklistfile,
-            region=region,
-            seed=seed,
-        )
-
+    regions = get_regions(
+        genome=chrom_dict,
+        bam=bam,
+        nregions=sampleSize,
+        windowsize=1000,
+        blacklist=blacklistfile,
+        region=region,
+        seed=seed,
+    )
 
     sampleSize_regions = int(max(1,sampleSize / 1000))
     regions = random.sample(regions, sampleSize_regions)
 
     logger.debug(f"regions contains {len(regions)} genomic coordinates")
-    # logger.info("computing frequencies")
     logger.info("Computing frequencies...")
     # the GC of the genome is sampled each stepSize bp.
     # step_size = max(int(global_vars["genome_size"] / sampleSize), 1)
@@ -883,23 +569,25 @@ def main(
         regions=regions,
         fragment_lengths=fragment_lengths,
         mp_type=mp_type,
-        Ndata=Ndata,
     )
-    # change the way data is handled
-    if interpolate:
-        if measurement_output:
-            logger.info("saving measured data")
-            data.to_csv(measurement_output, sep="\t")
-        r_data = interpolate_ratio_csaps(data)
-        r_data.to_csv(gcbias_frequency_output, sep="\t")
+
+    region_params = {
+        "genome": chrom_dict,
+        "nregions": sampleSize,
+        "windowsize": 1000,
+        "region": region,
+        "seed": seed,
+    }
+    if blacklistfile:
+        blacklist_hash = hash_file(blacklistfile)
+        out_dict = {
+            "blacklist_hash": blacklist_hash,
+            "get_regions_params": region_params,
+        }
     else:
-        if measurement_output:
-            logger.info(
-                "Option MeasurementOutput has no effect. Measured data is saved in GCbiasFrequencies file!"
-            )
-        r_data = get_ratio(data)
-        out_data = data.append(r_data)
-        out_data.to_csv(gcbias_frequency_output, sep="\t")
+        out_dict = {"blacklist_hash": None, "get_regions_params": region_params}
+
+    write_precomputed_table(df=data, params_dict=out_dict, filename=output_file)
 
 
 if __name__ == "__main__":

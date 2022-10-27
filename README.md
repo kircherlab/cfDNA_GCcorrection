@@ -2,11 +2,11 @@
 
 - [Introduction](#introduction)
 - [Documentation:](#documentation)
-    - [Installation](#installation)
-    - [Quickstart](#quickstart)
-        - [Executing computeGCBias_readlen](#executing-computegcbias_readlen)
-        - [Executing correctGCBias_readlen](#executing-correctgcbias_readlen)
-        - [Getting required Files/parameters](#getting-required-filesparameters)
+  - [Installation](#installation)
+  - [Quickstart](#quickstart)
+    - [Executing computeGCBias_readlen](#executing-computegcbias_readlen)
+    - [Executing correctGCBias_readlen](#executing-correctgcbias_readlen)
+    - [Getting required Files/parameters](#getting-required-filesparameters)
 - [Example](#example)
 - [Acknowledgment](#acknowledgment)
 
@@ -25,11 +25,12 @@ cfDNA_GCcorrection is an easy-to-use tool to determine and correct GC biases in 
 You can install cfDNA_GCcorrection on command line (linux/mac) by cloning this git repository :
 
 ``` bash
-$ git clone https://github.com/kircherlab/cfDNA_GCcorrection.git
-$ cd cfDNA_GCcorrection
-$ pip install -e .
+git clone https://github.com/kircherlab/cfDNA_GCcorrection.git
+cd cfDNA_GCcorrection
+pip install -e .
 ```
 
+**note:** pybedtools needs a locally installed version of bedtools! Please install it by other means. See the official [documentation](https://bedtools.readthedocs.io/en/latest/content/installation.html).
 ### Quickstart
 
 The GCbiascorrection described in this repo works in two steps.

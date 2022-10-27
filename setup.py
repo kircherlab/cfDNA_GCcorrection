@@ -65,7 +65,7 @@ setup(
     author='Sebastian Röner',
     author_email='sebastian.roener@bih-charite.de',
     packages=find_packages(),
-    scripts=['bin/computeGCBias_readlen','bin/correctGCBias_readlen'],
+    scripts=['bin/computeGCBias_readlen','bin/correctGCBias_readlen','bin/computeGCBias_background'],
     include_package_data=True,
     url='http://pypi.python.org/pypi/cfDNA_GCcorrection/',
     license='LICENSE.txt',
@@ -85,7 +85,12 @@ setup(
         "py2bit >= 0.2.0",
         "plotly >= 4.9",
         "deeptoolsintervals >= 0.1.8",
-        "csaps"
+        "csaps",
+        "ray",
+        "pybedtools",
+        "click",
+        "mpire",
+        "loguru"
     ],
     zip_safe=True,
     cmdclass={'sdist': sdist, 'install': install}
