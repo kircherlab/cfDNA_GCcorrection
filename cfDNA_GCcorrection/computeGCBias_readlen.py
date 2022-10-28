@@ -852,6 +852,9 @@ def main(
             f"Overwriting the following options: genome, sampleSize, region and seed"
         )
         logger.debug(f"params: {regions_params}")
+        seed = regions_params["seed"]
+        rng = np.random.default_rng(seed=seed)
+        random.seed(seed)
         sampleSize = regions_params["nregions"]
         regions = get_regions(bam=bam, blacklist=blacklistfile, **regions_params)
     else:
