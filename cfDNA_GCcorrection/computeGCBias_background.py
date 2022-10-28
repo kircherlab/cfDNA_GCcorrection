@@ -436,9 +436,11 @@ def tabulateGCcontent(
 @click.option(
     "--seed",
     "seed",
-    default=None,
+    default=42,
     type=click.INT,
-    help="""Set seed for reproducibility.""",
+    help="""Set seed for reproducibility. If not provided, 
+    will be set automatically, as a seed is needed to 
+    reproduce the regions in downstream analysis.""",
 )
 @click.option(
     "--mp_backend",
@@ -554,7 +556,7 @@ def main(
         seed=seed,
     )
 
-    sampleSize_regions = int(max(1,sampleSize / 1000))
+    sampleSize_regions = int(max(1, sampleSize / 1000))
     regions = random.sample(regions, sampleSize_regions)
 
     logger.debug(f"regions contains {len(regions)} genomic coordinates")
