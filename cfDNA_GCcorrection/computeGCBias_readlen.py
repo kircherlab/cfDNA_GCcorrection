@@ -829,11 +829,15 @@ def main(
         logger.info("Using precomputed background data.")
         logger.debug("Reading precomputed background data.")
         Ndata, param_dict = read_precomputed_table(precomputed_Ngc)
-        logger.debug("Validating blacklist hashes.")
         bl_hash = param_dict["blacklist_hash"]
-        assert bl_hash == hash_file(
-            blacklistfile
-        ), "Blacklist does not match blacklist used in precomputing the background distribtuion. Please use matching blacklists!"
+        if blacklistfile:
+            logger.debug("Validating blacklist hashes.")
+            assert bl_hash == hash_file(
+                blacklistfile
+            ), "Blacklist does not match blacklist used in precomputing the background distribtuion. Please use matching blacklists!"
+        else:
+            logger.debug("Validating that no blacklist was specified in both cases.")
+            assert bl_hash == blacklistfile, "Blacklist was specified in one of the scripts, but not in the other. Please use matching blacklists!"
         logger.debug("Checking parameters for compatibility with provided bam file.")
         regions_params = param_dict["get_regions_params"]
         bam_dict = chrom_dict.copy()
