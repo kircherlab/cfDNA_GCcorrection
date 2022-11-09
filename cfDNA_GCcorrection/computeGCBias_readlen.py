@@ -486,7 +486,7 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False, minreads=4):
         readlen_tmp = i
         N_tmp = N_f2([readlen_tmp, N_GC_gc])
         F_tmp = F_f2([readlen_tmp, F_GC_gc])
-        scaling_dict[i] = int(np.sum(N_tmp) / np.sum(F_tmp))
+        scaling_dict[i] = int(np.sum(N_tmp) / np.sum(F_tmp)) if np.sum(F_tmp) > 0 else 0
 
     # get dense data (full GC and readlen range)
     N_a, N_b = np.meshgrid(
@@ -542,7 +542,7 @@ def get_ratio(df, minreads=4):
     for i in N_GC.index:
         n_tmp = N_GC.loc[i].to_numpy()
         f_tmp = F_GC.loc[i].to_numpy()
-        scaling_dict[i] = float(np.sum(n_tmp)) / float(np.sum(f_tmp))
+        scaling_dict[i] = int(np.sum(n_tmp) / np.sum(f_tmp)) if np.sum(f_tmp) > 0 else 0
 
     r_dict = dict()
     for i in N_GC.index:
