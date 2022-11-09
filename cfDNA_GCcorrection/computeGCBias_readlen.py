@@ -447,7 +447,7 @@ def tabulateGCcontent(
 ###### Processing mesured values either raw or with interpolation ######
 
 
-def interpolate_ratio_csaps(df, smooth=None, normalized=False):
+def interpolate_ratio_csaps(df, smooth=None, normalized=False, minreads=4):
     # separate hypothetical read density from measured read density
     N_GC = df.loc["N_gc"]
     F_GC = df.loc["F_gc"]
@@ -504,7 +504,7 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False):
     for i in N_dense_points:
         x = i.tolist()
         scaling = scaling_dict[x[0]]
-        if (N_f2(x)).astype(int) > 0 and (F_f2(x)).astype(int) > 0:
+        if (N_f2(x)).astype(int) > minreads and (F_f2(x)).astype(int) > minreads:
             ratio = int(F_f2(x)) / int(N_f2(x)) * scaling
         else:
             ratio = 1
@@ -530,7 +530,7 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False):
     )  # NInt_df.append(FInt_df).append(RInt_df)
 
 
-def get_ratio(df):
+def get_ratio(df, minreads=4):
     # separate hypothetical read density from measured read density
     N_GC = df.loc["N_gc"]
     F_GC = df.loc["F_gc"]
@@ -552,7 +552,7 @@ def get_ratio(df):
         r_gc_t = np.array(
             [
                 float(f_gc_t[x]) / n_gc_t[x] * scaling
-                if n_gc_t[x] and f_gc_t[x] > 0
+                if n_gc_t[x] and f_gc_t[x] > minreads
                 else 1
                 for x in range(len(f_gc_t))
             ]
@@ -654,6 +654,15 @@ def get_ratio(df):
             less accurate results. Deactivated by default.""",
 )
 @click.option(
+    "--minreads",
+    "minreads",
+    default=4,
+    show_default=True,
+    type=click.INT,
+    help="""Minimum reads to consider, when calculating GC bias ratio.
+    Bins with values below this threshold get a default value of 1 assigned.""",
+)
+@click.option(
     "--precomputed_background",
     "-pb",
     "precomputed_Ngc",
@@ -734,6 +743,7 @@ def main(
     maxlen,
     lengthStep,
     interpolate,
+    minreads,
     measurement_output,
     precomputed_Ngc,
     sampleSize,
@@ -897,14 +907,14 @@ def main(
         if measurement_output:
             logger.info("saving measured data")
             data.to_csv(measurement_output, sep="\t")
-        r_data = interpolate_ratio_csaps(data)
+        r_data = interpolate_ratio_csaps(data, minreads=minreads)
         r_data.to_csv(gcbias_frequency_output, sep="\t")
     else:
         if measurement_output:
             logger.info(
                 "Option MeasurementOutput has no effect. Measured data is saved in GCbiasFrequencies file!"
             )
-        r_data = get_ratio(data)
+        r_data = get_ratio(data, minreads=minreads)
         out_data = data.append(r_data)
         out_data.to_csv(gcbias_frequency_output, sep="\t")
 
