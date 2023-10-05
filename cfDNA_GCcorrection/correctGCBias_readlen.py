@@ -1,126 +1,29 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import copy
+import math
 import os
-import shutil
-import time
+import random
 import subprocess
 import sys
-import math
-import logging
-import copy
+import time
+from itertools import starmap
 
-import py2bit
-import pysam
-import multiprocessing
+import click
 import numpy as np
 import pandas as pd
-import argparse
-
+import py2bit
+import pysam
+from loguru import logger
+from mpire import WorkerPool
+from mpire.utils import make_single_arguments
 from scipy.stats import binom
 
-from cfDNA_GCcorrection.utilities import tbitToBamChrName, getGC_content
-from cfDNA_GCcorrection import writeBedGraph, parserCommon, mapReduce
-from cfDNA_GCcorrection import utilities
 from cfDNA_GCcorrection.bamHandler import openBam
-from cfDNA_GCcorrection.correctGCBias import writeCorrected_wrapper, writeCorrected_worker
+from cfDNA_GCcorrection.mapReduce import getUserRegion
+from cfDNA_GCcorrection.utilities import getGC_content, getTempFileName, map_chroms
 
-old_settings = np.seterr(all='ignore')
-
-# define global vars
-global_vars = {}
-F_gc = N_gc = R_gc = R_gc_min = R_gc_max = debug = verbose_flag = None
-
-
-def parse_arguments():
-    parentParser = parserCommon.getParentArgParse(binSize=True, blackList=False)  # binSize = 50 per default
-    requiredArgs = getRequiredArgs()
-    parser = argparse.ArgumentParser(
-        parents=[requiredArgs, parentParser],
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='This tool corrects the GC-bias using the'
-                    ' method proposed by [Benjamini & Speed (2012). '
-                    'Nucleic Acids Research, 40(10)]. It will remove reads'
-                    ' from regions with too high coverage compared to the'
-                    ' expected values (typically GC-rich regions) and will'
-                    ' add reads to regions where too few reads are seen '
-                    '(typically AT-rich regions). '
-                    'The tool ``computeGCBias`` needs to be run first to generate the '
-                    'frequency table needed here.',
-        usage='An example usage is:\n correctGCBias '
-              '-b file.bam --effectiveGenomeSize 2150570000 -g mm9.2bit '
-              '--GCbiasFrequenciesFile freq.txt -o gc_corrected.bam '
-              '[options]',
-        conflict_handler='resolve',
-        add_help=False)
-    return parser
-
-
-def process_args(args=None):
-    args = parse_arguments().parse_args(args)
-
-    return args
-
-
-def getRequiredArgs():
-    parser = argparse.ArgumentParser(add_help=False)
-
-    required = parser.add_argument_group('Required arguments')
-
-    # define the arguments
-    required.add_argument('--bamfile', '-b',
-                          metavar='BAM file',
-                          help='Sorted BAM file to correct.',
-                          required=True)
-    required.add_argument('--effectiveGenomeSize',
-                          help='The effective genome size is the portion '
-                               'of the genome that is mappable. Large fractions of '
-                               'the genome are stretches of NNNN that should be '
-                               'discarded. Also, if repetitive regions were not '
-                               'included in the mapping of reads, the effective '
-                               'genome size needs to be adjusted accordingly. '
-                               'A table of values is available here: '
-                               'http://deeptools.readthedocs.io/en/latest/content/feature/effectiveGenomeSize.html .',
-                          default=None,
-                          type=int,
-                          required=True)
-    required.add_argument('--genome', '-g',
-                          help='Genome in two bit format. Most genomes can be '
-                               'found here: http://hgdownload.cse.ucsc.edu/gbdb/  '
-                               'Search for the .2bit ending. Otherwise, fasta '
-                               'files can be converted to 2bit using faToTwoBit '
-                               'available here: '
-                               'http://hgdownload.cse.ucsc.edu/admin/exe/',
-                          metavar='two bit file',
-                          required=True)
-    required.add_argument('--GCbiasFrequenciesFile', '-freq',
-                          help='Indicate the output file from '
-                               'computeGCBias containing '
-                               'the observed and expected read frequencies per GC-'
-                               'content.',
-                          type=argparse.FileType('r'),
-                          metavar='FILE',
-                          required=True)
-    output = parser.add_argument_group('Output options')
-    output.add_argument('--correctedFile', '-o',
-                        help='Name of the corrected file. The ending will '
-                             'be used to decide the output file format. The options '
-                             'are ".bam", ".bw" for a bigWig file, ".bg" for a '
-                             'bedGraph file.',
-                        metavar='FILE',
-                        type=argparse.FileType('w'),
-                        required=True)
-    # define the optional arguments
-    optional = parser.add_argument_group('Optional arguments')
-    optional.add_argument("--weight_only", "-w",
-                          help='Tag reads with GC_bias (YC_tag) instead of sampling',
-                          action='store_true')
-    optional.add_argument("--help", "-h", action="help",
-                          help="show this help message and exit")
-    return parser
-
-
-rng = np.random.default_rng()
 
 
 def roundGCLenghtBias(gc):
