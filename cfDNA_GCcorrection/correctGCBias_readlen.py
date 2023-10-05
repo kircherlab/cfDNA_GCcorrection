@@ -372,6 +372,24 @@ def writeCorrectedBam_worker(
 
     return tempFileName
 
+def main(
+    bam_file,
+    reference_file,
+    GCbias_frequencies_file,
+    output_file,
+    num_cpus=1,
+    weight_only=True,
+    region=None,
+    effective_genome_size=None,
+    use_nearest_weight=False,
+    pysam_compression_threads=10,
+    default_value=1,
+    seed=None,
+    progress_bar=False,
+    verbose=False,
+    debug=False,
+):
+    ### initial setup
 
     if debug:
         debug_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | \
@@ -400,41 +418,117 @@ def writeCorrectedBam_worker(
             enqueue=True,
         )
 
+    global rng
+    rng = np.random.default_rng(seed=seed)
+    random.seed(seed)
+
     logger.debug("Provided arguments:")
     logger.debug(locals())
 
+    start_time = time.time()
+
+    ## set parameters
     logger.info("Preparing parameters.")
+
+    ### load and process GC bias profile
     logger.info("Loading GC bias profile.")
+    data = pd.read_csv(GCbias_frequencies_file, sep="\t", index_col=[0, 1])
+
+    F_gc = data.loc["F_gc"]  # fragment counts
+    N_gc = data.loc["N_gc"]  # genomic background
+    R_gc = data.loc["R_gc"]  # bias weights
+
     logger.debug(R_gc.T.describe().T.describe())
+
+    R_gc.columns = R_gc.columns.astype(int)
+    R_gc_dict = R_gc.rdiv(1).round(2).to_dict(orient="index")
 
     N_GC_min, N_GC_max = np.nanmin(N_gc.index), np.nanmax(N_gc.index)
 
-    global_vars = dict()
-    global_vars['2bit'] = args.genome
-    global_vars['bam'] = args.bamfile
+    ### estimate max duplication based on the GC profile if reads
+    ### should be duplicated instead of attaching weights
 
+    max_dup_gc = None
+    if not weight_only:
+        # compute the probability to find more than one read (a redundant read)
+        # at a certain position based on the gc of the read fragment
+        # the binomial function is used for that
+        # max_dup_gc = [binom.isf(1e-7, F_gc[x], 1.0 / N_gc[x])
+        #              if F_gc[x] > 0 and N_gc[x] > 0 else 1
+        #              for x in range(len(F_gc))]
         logger.info("Estimate the probability of redundant reads based on GC profile.")
         max_dup_gc = dict()
+        for i in np.arange(N_GC_min, N_GC_max + 1, 1):
+            N_tmp = N_gc.loc[i].to_numpy()
+            F_tmp = F_gc.loc[i].to_numpy()
+            max_dup_gc[i] = [
+                binom.isf(1e-7, F_tmp[x], 1.0 / N_tmp[x])
+                if F_tmp[x] > 0 and N_tmp[x] > 0
+                else 1
+                for x in range(len(F_tmp))
+            ]
+
         logger.debug(f"max_dup_gc: {max_dup_gc}")
+
+    ### get bam stats
     logger.info("Loading genome and bam file.")
+    tbit = py2bit.open(reference_file)
+    bam, mapped, unmapped, bam_stats = openBam(
+        bam_file, returnStats=True, nThreads=num_cpus
+    )
+
+    genome_size = sum(tbit.chroms().values())
+    total_reads = mapped
+
+    if effective_genome_size:
+        reads_per_bp = float(total_reads) / effective_genome_size
+    else:
+        reads_per_bp = float(total_reads) / genome_size
+
     logger.debug(
         f"Bam stats: mapped reads: {mapped}; unmapped reads: {unmapped}; \
             genome size: {genome_size}; estimated reads per bp: {reads_per_bp}"
     )
+
+    ### preparing chunks for parallel processing
+
     logger.info("Preparing chunks for processing.")
     # divide the genome in fragments containing about 4e5 reads.
     # This amount of reads takes about 20 seconds
     # to process per core (48 cores, 256 Gb memory)
-    chunkSize = int(4e5 / global_vars['reads_per_bp'])
+    chunk_size = int(4e5 / reads_per_bp)
 
-    # chromSizes: list of tuples
-    chromSizes = [(bam.references[i], bam.lengths[i])
-                  for i in range(len(bam.references))]
+    # chrom_sizes: list of tuples
+    chrom_sizes = [
+        (bam.references[i], bam.lengths[i]) for i in range(len(bam.references))
+    ]
 
+    region_start = 0
+
+    if region:
         logger.info(
             f"Using user defined region {region} for correction. \
             Other regions will not be corrected!"
         )
+        region_cleaned = region.replace("-", ":")
+        chrom_sizes, region_start, region_end, chunk_size = getUserRegion(
+            chrom_sizes, region_cleaned, max_chunk_size=chunk_size
+        )
+
+    chr_name_bam_to_bit_mapping = map_chroms(
+        bam.references,
+        list(tbit.chroms().keys()),
+        ref_name="bam file",
+        target_name="2bit reference file",
+    )
+
+    chunks = get_chunks(
+        chrom_sizes=chrom_sizes,
+        region_start=region_start,
+        chunk_size=chunk_size,
+        chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
+    )
+
     # check if at least each CPU core gets a task
     if len(chunks) < (num_cpus - 1):
         logger.debug(f"Less chunks({len(chunks)}) than CPUs({(num_cpus-1)}) detected.")
@@ -451,22 +545,79 @@ def writeCorrectedBam_worker(
 
     logger.info(f"Genome partition size for multiprocessing: {chunk_size}")
 
+    ### preparing shared parameters
+
     logger.info("Preparing shared objects.")
+
+    shared_params = {
+        "bam_file": bam_file,
+        "twobit_file": reference_file,
+        "R_gc_dict": R_gc_dict,
+        "max_dup_gc": max_dup_gc,
+        "tag_but_not_change_number": weight_only,
+        "verbose": verbose,
+        "debug": debug,
+        "threads": pysam_compression_threads,
+        "default_value": default_value,
+        "use_nearest_weight": use_nearest_weight,
+    }
+
+    ## do the computation
+
     logger.info("Starting correction.")
+
+    if len(chunks) > 1 and num_cpus > 1:
         logger.info(
             f"Using python multiprocessing with {(num_cpus-1)} CPU cores for {len(chunks)} tasks"
         )
+        with WorkerPool(n_jobs=(num_cpus - 1), shared_objects=shared_params) as pool:
+            imap_res = pool.imap(
+                writeCorrectedBam_wrapper,
+                make_single_arguments(chunks),
+                iterable_len=len(chunks),
+                progress_bar=progress_bar,
+            )
+    else:
         logger.info(f"Using one process for for {len(chunks)} tasks")
         starmap_generator = ((shared_params, chunk) for chunk in chunks)
+        imap_res = starmap(writeCorrectedBam_wrapper, starmap_generator)
+
+    ## aggregate results
+
+    if len(chunks) == 1:
+        res = list(imap_res)
+        command = f"cp {res[0]} {output_file}"
+        run_shell_command(command)
+    else:
         logger.info("Concatenating (sorted) intermediate BAMs")
         out_threads = math.ceil(pysam_compression_threads * 2 / 3)
+        in_threads = max(1, (pysam_compression_threads - out_threads))
+
+        res = list()
+        pysam_verbosity = pysam.set_verbosity(0) # set htslib error verbosity to 0, as we expect the tmpfiles not to have an index  # noqa: E501
+
+        with pysam.AlignmentFile(
+            output_file, "wb", template=bam, threads=out_threads
+        ) as of:
+            for tmpfile in imap_res:
+                res.append(tmpfile)
                 logger.info(f"Adding tmpfile({tmpfile}) to final output file.")
+                with pysam.AlignmentFile(tmpfile, "rb", threads=in_threads) as file:
+                    for read in file.fetch(until_eof=True):
+                        of.write(read)
+                if not progress_bar:
+                    elapsed_time = time.time() - start_time
                     logger.info(f"Progress: {len(res)}/{len(chunks)} tasks completed in {int(elapsed_time/3600)}:{int(elapsed_time%3600/60):02d}:{int(elapsed_time%60):02d} (HH:MM:SS).")  # noqa: E501
+        
+        pysam.set_verbosity(pysam_verbosity) # reset htslib verbosity to previous state
         logger.info(f"Indexing BAM: {output_file}")
+        pysam.index(output_file)  # usable through pysam dispatcher
+
         logger.info("Removing temporary files.")
         for tempFileName in res:
             os.remove(tempFileName)
 
+        elapsed_time = time.time() - start_time
         logger.info(f"Full computation took {int(elapsed_time/3600)}:{int(elapsed_time%3600/60):02d}:{int(elapsed_time%60):02d} (HH:MM:SS).")
 
 if __name__ == "__main__":
