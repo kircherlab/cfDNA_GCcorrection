@@ -121,8 +121,8 @@ def findNearestIndex(array, value):
     return array[idx]
 
 
-def writeCorrectedSam_wrapper(args):
-    return writeCorrectedSam_worker(*args)
+def writeCorrectedBam_wrapper(shared_params, chunk):
+    return writeCorrectedBam_worker(**shared_params, **chunk)
 
 
 def writeCorrectedBam_worker(
