@@ -27,9 +27,9 @@ from cfDNA_GCcorrection.utilities import getGC_content, getTempFileName, map_chr
 
 
 def roundGCLenghtBias(gc):
-    gc_frac, gc_int = math.modf(round(gc * 100, 2))
-    gc_new = gc_int + rng.binomial(1, gc_frac)
-    return int(gc_new)
+    value = gc * 100
+    gc_new = int(value) + (1 if np.random.rand() < value % 1 else 0)
+    return gc_new
 
 
 # def getReadGCcontent(tbit, read, fragmentLength, chrNameBit):
