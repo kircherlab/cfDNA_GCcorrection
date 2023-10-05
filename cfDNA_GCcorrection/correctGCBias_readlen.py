@@ -372,6 +372,128 @@ def writeCorrectedBam_worker(
 
     return tempFileName
 
+
+@click.command()
+@click.option(
+    "--bamfile",
+    "-b",
+    "bam_file",
+    required=True,
+    type=click.Path(exists=True, readable=True),
+    help="Sorted BAM file.",
+)
+@click.option(
+    "--genome",
+    "-g",
+    "reference_file",
+    required=True,
+    type=click.Path(exists=True, readable=True),
+    help="""Genome reference in two bit format. Most genomes can be 
+            found here: http://hgdownload.cse.ucsc.edu/gbdb/ 
+            Search for the .2bit ending. Otherwise, fasta 
+            files can be converted to 2bit using the UCSC 
+            programm called faToTwoBit available for different 
+            plattforms at '
+            http://hgdownload.cse.ucsc.edu/admin/exe/""",
+)
+@click.option(
+    "--GCbiasFrequenciesFile",
+    "-freq",
+    "GCbias_frequencies_file",
+    required=True,
+    type=click.Path(exists=True, readable=True),
+    help="""Indicate the output file from computeGCBias containing 
+            the coverage bias values per GC-content and fragment length.
+            This file should be a (gzipped) tab separated file.""",
+)
+@click.option(
+    "--outfile",
+    "-o",
+    "output_file",
+    required=True,
+    type=click.Path(writable=True),
+    help="""Output Bam file""",
+)
+@click.option(
+    "--num_cpus",
+    "-p",
+    "num_cpus",
+    type=click.INT,
+    default=1,
+    show_default=True,
+    help="Number of processors to use.",
+)
+@click.option(
+    "--weights/--copies",
+    "weight_only",
+    type=click.BOOL,
+    default=True,
+    show_default=True,
+    help="""Flag for either attaching weights or 
+            altering copies of reads based on GC content.""",
+)
+@click.option(
+    "--region",
+    "region",
+    type=click.STRING,
+    default=None,
+    show_default=True,
+    help="""Genomic region specified for correcting reads (e.g chr1:0-1000).""",
+)
+@click.option(
+    "--effectiveGenomeSize",
+    "effective_genome_size",
+    type=click.INT,
+    default=None,
+    show_default=True,
+    help="""[Optional]:
+            Effective genome size, used to tune window sizes for paralellisation.
+            
+            The effective genome size is the portion 
+            of the genome that is mappable. Large fractions of 
+            the genome are stretches of NNNN that should be 
+            discarded. Also, if repetitive regions were not 
+            included in the mapping of reads, the effective 
+            genome size needs to be adjusted accordingly. 
+            A table of values is available here: 
+            http://deeptools.readthedocs.io/en/latest/content/feature/effectiveGenomeSize.html""",
+)
+@click.option(
+    "--use_nearest_weight",
+    "use_nearest_weight",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="""Use nearest weight, if a fragment length is not included in the GC profile.
+            This should be only used with length filtered bam files or weights might
+            be not representative of fragments!""",
+)
+@click.option(
+    "--num_threads",
+    "pysam_compression_threads",
+    type=click.INT,
+    default=10,
+    show_default=True,
+    help="Number of compression threads used for BAM I/O.",
+)
+@click.option(
+    "--default_weight",
+    "default_value",
+    type=click.INT,
+    default=1,
+    show_default=True,
+    help="Default weight for fragment lengths not included in GC profile.",
+)
+@click.option(
+    "--seed",
+    "seed",
+    default=None,
+    type=click.INT,
+    help="""Set seed for reproducibility.""",
+)
+@click.option("--progress_bar", "progress_bar", is_flag=True, help="Enables TQDM progress bar.")
+@click.option("-v", "--verbose", "verbose", is_flag=True, help="Enables verbose mode.")
+@click.option("--debug", "debug", is_flag=True, help="Enables debug mode.")
 def main(
     bam_file,
     reference_file,
@@ -621,4 +743,4 @@ def main(
         logger.info(f"Full computation took {int(elapsed_time/3600)}:{int(elapsed_time%3600/60):02d}:{int(elapsed_time%60):02d} (HH:MM:SS).")
 
 if __name__ == "__main__":
-    main()
+    main(max_content_width=120)
