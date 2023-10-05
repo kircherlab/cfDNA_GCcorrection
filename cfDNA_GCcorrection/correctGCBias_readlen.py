@@ -121,6 +121,30 @@ def findNearestIndex(array, value):
     return array[idx]
 
 
+def get_chunks(chrom_sizes, region_start, chunk_size, chr_name_bam_to_bit_mapping):
+    chunks = list()
+    for chrom, size in chrom_sizes:
+        for i in range(region_start, size, chunk_size):
+            try:
+                chrNameBit = chr_name_bam_to_bit_mapping[chrom]
+            except KeyError:
+                logger.debug(
+                    f"No sequence information for chromosome {chrom} in 2bit file. \
+                        Reads in this chromosome will be skipped"
+                )
+                continue
+            chunk_end = min(size, i + chunk_size)
+            chunks.append(
+                {
+                    "chrNameBam": chrom,
+                    "chrNameBit": chrNameBit,
+                    "start": i,
+                    "end": chunk_end,
+                }
+            )
+    return chunks
+
+
 def writeCorrectedBam_wrapper(shared_params, chunk):
     return writeCorrectedBam_worker(**shared_params, **chunk)
 
@@ -411,10 +435,20 @@ def writeCorrectedBam_worker(
             f"Using user defined region {region} for correction. \
             Other regions will not be corrected!"
         )
+    # check if at least each CPU core gets a task
+    if len(chunks) < (num_cpus - 1):
         logger.debug(f"Less chunks({len(chunks)}) than CPUs({(num_cpus-1)}) detected.")
         chunk_size = math.ceil(
+            chunk_size * (len(chunks) / (num_cpus - 1))
+        )  # adjust chunk_size so that each CPU core gets a task
         logger.debug(f"New chunk_size: {chunk_size}")
         chunks = get_chunks(
+            chrom_sizes=chrom_sizes,
+            region_start=region_start,
+            chunk_size=chunk_size,
+            chr_name_bam_to_bit_mapping=chr_name_bam_to_bit_mapping,
+        )
+
     logger.info(f"Genome partition size for multiprocessing: {chunk_size}")
 
     logger.info("Preparing shared objects.")
