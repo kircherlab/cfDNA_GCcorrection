@@ -25,6 +25,21 @@ from cfDNA_GCcorrection.mapReduce import getUserRegion
 from cfDNA_GCcorrection.utilities import getGC_content, getTempFileName, map_chroms
 
 
+def run_shell_command(command):
+    """
+    Runs the given shell command. Report
+    any errors found.
+    """
+    try:
+        subprocess.check_call(command, shell=True)
+
+    except subprocess.CalledProcessError as error:
+        logger.error(f"Error{error}\n")
+        exit(1)
+    except Exception as error:
+        logger.error(f"Error: {error}\n")
+        exit(1)
+
 
 def roundGCLenghtBias(gc):
     value = gc * 100
