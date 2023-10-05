@@ -67,7 +67,9 @@ def getReadGCcontent(tbit, read, chrNameBit):  # fragmentLength not needed anymo
     fragStart = None
     fragEnd = None
 
-    if read.is_paired and read.is_proper_pair:  # and abs(read.tlen) < 2 * fragmentLength:
+    if (
+        read.is_paired and read.is_proper_pair
+    ):  # and abs(read.tlen) < 2 * fragmentLength:
         if read.is_reverse and read.tlen < 0:
             fragEnd = read.reference_end
             fragStart = read.reference_end + read.template_length
@@ -82,6 +84,7 @@ def getReadGCcontent(tbit, read, chrNameBit):  # fragmentLength not needed anymo
         else:
             fragStart = read.reference_start  # read.pos
             fragEnd = read.reference_end  # fragStart + fragmentLength
+
     fragStart = max(0, fragStart)
     try:
         gc = getGC_content(tbit, chrNameBit, fragStart, fragEnd, fraction=True)
