@@ -349,113 +349,39 @@ def writeCorrectedBam_worker(
     return tempFileName
 
 
-# def getFragmentFromRead(read, defaultFragmentLength, extendPairedEnds=True):
-#    """
-#    The read has to be pysam object.
-#
-#    The following values are defined (for forward reads)::
-#
-#
-#             |--          -- read.tlen --              --|
-#             |-- read.alen --|
-#        -----|===============>------------<==============|----
-#             |               |            |
-#          read.pos      read.aend      read.pnext
-#
-#
-#          and for reverse reads
-#
-#
-#             |--             -- read.tlen --           --|
-#                                         |-- read.alen --|
-#        -----|===============>-----------<===============|----
-#             |                           |               |
-#          read.pnext                   read.pos      read.aend
-#
-#    this is a sketch of a pair-end reads
-#
-#    The function returns the fragment start and end, either
-#    using the paired end information (if available) or
-#    extending the read in the appropriate direction if this
-#    is single-end.
-#
-#    Parameters
-#    ----------
-#    read : pysam read object
-#
-#
-#    Returns
-#    -------
-#    tuple
-#        (fragment start, fragment end)
-#
-#    """
-#    # convert reads to fragments
-#
-#    # this option indicates that the paired ends correspond
-#    # to the fragment ends
-#    # condition read.tlen < maxPairedFragmentLength is added to avoid read pairs
-#    # that span thousands of base pairs
-#
-#    if extendPairedEnds is True and read.is_paired and 0 < abs(read.tlen) < 1000:
-#        if read.is_reverse:
-#            fragmentStart = read.pnext
-#            fragmentEnd = read.aend
-#        else:
-#            fragmentStart = read.pos
-#            # the end of the fragment is defined as
-#            # the start of the forward read plus the insert length
-#            fragmentEnd = read.pos + read.tlen
-#    else:
-#        if defaultFragmentLength <= read.aend - read.pos:
-#            fragmentStart = read.pos
-#            fragmentEnd = read.aend
-#        else:
-#            if read.is_reverse:
-#                fragmentStart = read.aend - defaultFragmentLength
-#                fragmentEnd = read.aend
-#            else:
-#                fragmentStart = read.pos
-#                fragmentEnd = read.pos + defaultFragmentLength
-#
-#    return fragmentStart, fragmentEnd
+    if debug:
+        debug_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | \
+            <level>{level: <8}</level> | <level>process: {process}</level> | \
+            <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - \
+            <level>{message}</level>"
+        logger.remove()
+        logger.add(
+            sys.stderr, level="DEBUG", format=debug_format, colorize=True, enqueue=True
+        )
+        logger.debug("Debug mode active.")
+    elif verbose:
+        info_format = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{message}</level>"
+        )
+        logger.remove()
+        logger.add(
+            sys.stderr, level="INFO", format=info_format, colorize=False, enqueue=True
+        )
+    else:
+        logger.remove()
+        logger.add(
+            sys.stderr,
+            level="WARNING",
+            colorize=True,
+            enqueue=True,
+        )
 
+    logger.debug("Provided arguments:")
+    logger.debug(locals())
 
-def run_shell_command(command):
-    """
-    Runs the given shell command. Report
-    any errors found.
-    """
-    try:
-        subprocess.check_call(command, shell=True)
-
-    except subprocess.CalledProcessError as error:
-        logging.error(f'Error{error}\n')
-        exit(1)
-    except Exception as error:
-        logging.error(f'Error: {error}\n')
-        exit(1)
-
-
-def main(args=None):
-    global verbose_flag, F_gc, N_gc, R_gc, global_vars
-
-    args = process_args(args)
-    verbose_flag = args.verbose
-
-    loglevel = logging.INFO
-    logformat = '%(message)s'
-    if args.verbose:
-        loglevel = logging.DEBUG
-        logformat = "%(asctime)s: %(levelname)s - %(message)s"
-
-    logging.basicConfig(stream=sys.stderr, level=loglevel, format=logformat)
-    # data = np.loadtxt(args.GCbiasFrequenciesFile.name)
-    data = pd.read_csv(args.GCbiasFrequenciesFile.name, sep="\t", index_col=[0, 1])
-
-    F_gc = data.loc["F_gc"]
-    N_gc = data.loc["N_gc"]
-    R_gc = data.loc["R_gc"]
+    logger.info("Preparing parameters.")
+    logger.info("Loading GC bias profile.")
+    logger.debug(R_gc.T.describe().T.describe())
 
     N_GC_min, N_GC_max = np.nanmin(N_gc.index), np.nanmax(N_gc.index)
 
@@ -463,33 +389,15 @@ def main(args=None):
     global_vars['2bit'] = args.genome
     global_vars['bam'] = args.bamfile
 
-    # compute the probability to find more than one read (a redundant read)
-    # at a certain position based on the gc of the read fragment
-    # the binomial function is used for that
-    # max_dup_gc = [binom.isf(1e-7, F_gc[x], 1.0 / N_gc[x])
-    #              if F_gc[x] > 0 and N_gc[x] > 0 else 1
-    #              for x in range(len(F_gc))]
-    max_dup_gc = dict()
-    for i in np.arange(N_GC_min, N_GC_max + 1, 1):
-        N_tmp = N_gc.loc[i].to_numpy()
-        F_tmp = F_gc.loc[i].to_numpy()
-        max_dup_gc[i] = [binom.isf(1e-7, F_tmp[x], 1.0 / N_tmp[x])
-                         if F_tmp[x] > 0 and N_tmp[x] > 0 else 1
-                         for x in range(len(F_tmp))]
-    if verbose_flag:
-        logging.debug(f"max_dup_gc: {max_dup_gc}")
-    global_vars['max_dup_gc'] = max_dup_gc
-
-    tbit = py2bit.open(global_vars['2bit'])
-    bam, mapped, unmapped, stats = openBam(args.bamfile, returnStats=True, nThreads=args.numberOfProcessors)
-
-    global_vars['genome_size'] = sum(tbit.chroms().values())
-    global_vars['total_reads'] = mapped
-    global_vars['reads_per_bp'] = \
-        float(global_vars['total_reads']) / args.effectiveGenomeSize
-
-    # apply correction
-    logging.info("applying correction")
+        logger.info("Estimate the probability of redundant reads based on GC profile.")
+        max_dup_gc = dict()
+        logger.debug(f"max_dup_gc: {max_dup_gc}")
+    logger.info("Loading genome and bam file.")
+    logger.debug(
+        f"Bam stats: mapped reads: {mapped}; unmapped reads: {unmapped}; \
+            genome size: {genome_size}; estimated reads per bp: {reads_per_bp}"
+    )
+    logger.info("Preparing chunks for processing.")
     # divide the genome in fragments containing about 4e5 reads.
     # This amount of reads takes about 20 seconds
     # to process per core (48 cores, 256 Gb memory)
@@ -499,149 +407,33 @@ def main(args=None):
     chromSizes = [(bam.references[i], bam.lengths[i])
                   for i in range(len(bam.references))]
 
-    regionStart = 0
-    if args.region:
-        chromSizes, regionStart, regionEnd, chunkSize = mapReduce.getUserRegion(chromSizes, args.region,
-                                                                                max_chunk_size=chunkSize)
+        logger.info(
+            f"Using user defined region {region} for correction. \
+            Other regions will not be corrected!"
+        )
+        logger.debug(f"Less chunks({len(chunks)}) than CPUs({(num_cpus-1)}) detected.")
+        chunk_size = math.ceil(
+        logger.debug(f"New chunk_size: {chunk_size}")
+        chunks = get_chunks(
+    logger.info(f"Genome partition size for multiprocessing: {chunk_size}")
 
-    logging.info(f"genome partition size for multiprocessing: {chunkSize}")
-    logging.info(f"using region {args.region}")
-    mp_args = []
-
-    chrNameBitToBam = tbitToBamChrName(list(tbit.chroms().keys()), bam.references)
-    chrNameBamToBit = dict([(v, k) for k, v in chrNameBitToBam.items()])
-    logging.info(f"{chrNameBitToBam}, {chrNameBamToBit}")
-    c = 1
-    pool = multiprocessing.Pool(args.numberOfProcessors)
-    if args.correctedFile.name.endswith('bam'):
-        for chrom, size in chromSizes:
-            start = 0 if regionStart == 0 else regionStart
-            for i in range(start, size, chunkSize):
-                try:
-                    chrNameBamToBit[chrom]
-                except KeyError:
-                    logging.debug(f"no sequence information for chromosome {chrom} in 2bit file")
-                    logging.debug("Reads in this chromosome will be skipped")
-                    continue
-                chunk_end = min(size, i + chunkSize)
-                mp_args.append((chrom, chrNameBamToBit[chrom], i, chunk_end, args.weight_only, verbose_flag))
-                c += 1
-        if len(mp_args) > 1 and args.numberOfProcessors > 1:
-            logging.info(f"using {args.numberOfProcessors} processors for {len(mp_args)} number of tasks")
-
-            res = pool.map_async(writeCorrectedSam_wrapper, mp_args).get(9999999)
-        else:
-            res = list(map(writeCorrectedSam_wrapper, mp_args))
-
-        if len(res) == 1:
-            command = f"cp {res[0]} {args.correctedFile.name}"
-            run_shell_command(command)
-        else:
-            logging.info("concatenating (sorted) intermediate BAMs")
-            header = pysam.Samfile(res[0])
-            of = pysam.Samfile(args.correctedFile.name, "wb", template=header)
-            header.close()
-            for f in res:
-                f = pysam.Samfile(f)
-                for e in f.fetch(until_eof=True):
-                    of.write(e)
-                f.close()
-            of.close()
-
-        logging.info("indexing BAM")
-        pysam.index(args.correctedFile.name)  # usable through pysam dispatcher
-
+    logger.info("Preparing shared objects.")
+    logger.info("Starting correction.")
+        logger.info(
+            f"Using python multiprocessing with {(num_cpus-1)} CPU cores for {len(chunks)} tasks"
+        )
+        logger.info(f"Using one process for for {len(chunks)} tasks")
+        starmap_generator = ((shared_params, chunk) for chunk in chunks)
+        logger.info("Concatenating (sorted) intermediate BAMs")
+        out_threads = math.ceil(pysam_compression_threads * 2 / 3)
+                logger.info(f"Adding tmpfile({tmpfile}) to final output file.")
+                    logger.info(f"Progress: {len(res)}/{len(chunks)} tasks completed in {int(elapsed_time/3600)}:{int(elapsed_time%3600/60):02d}:{int(elapsed_time%60):02d} (HH:MM:SS).")  # noqa: E501
+        logger.info(f"Indexing BAM: {output_file}")
+        logger.info("Removing temporary files.")
         for tempFileName in res:
             os.remove(tempFileName)
 
-    if args.correctedFile.name.endswith('bg') or args.correctedFile.name.endswith('bw'):
-        bedGraphStep = args.binSize  # 50 per default
-        for chrom, size in chromSizes:
-            start = 0 if regionStart == 0 else regionStart
-            for i in range(start, size, chunkSize):
-                try:
-                    chrNameBamToBit[chrom]
-                except KeyError:
-                    logging.debug(f"no sequence information for chromosome {chrom} in 2bit file")
-                    logging.debug("Reads in this chromosome will be skipped")
-                    continue
-                segment_end = min(size, i + bedGraphStep)
-                mp_args.append((chrom, chrNameBamToBit[chrom], i, segment_end, bedGraphStep))
-                c += 1
-
-        if len(mp_args) > 1 and args.numberOfProcessors > 1:
-            res = pool.map_async(writeCorrected_wrapper, mp_args).get(9999999)
-        else:
-            res = list(map(writeCorrected_wrapper, mp_args))
-
-        oname = args.correctedFile.name
-        args.correctedFile.close()
-        if oname.endswith('bg'):
-            f = open(oname, 'wb')
-            for tempFileName in res:
-                if tempFileName:
-                    shutil.copyfileobj(open(tempFileName, 'rb'), f)
-                    os.remove(tempFileName)
-            f.close()
-        else:
-            chromSizes = [(k, v) for k, v in tbit.chroms().items()]
-            writeBedGraph.bedGraphToBigWig(chromSizes, res, oname)
-
-
-class Tester:
-    def __init__(self):
-        global debug, global_vars
-        self.root = os.path.dirname(os.path.abspath(__file__)) + "/test/test_corrGC/"
-        self.tbitFile = self.root + "sequence.2bit"
-        self.bamFile = self.root + "test.bam"
-        self.chrNameBam = '2L'
-        self.chrNameBit = 'chr2L'
-        bam, mapped, unmapped, stats = openBam(self.bamFile, returnStats=True)
-        tbit = py2bit.open(self.tbitFile)
-        debug = 0
-        global_vars = {'2bit': self.tbitFile,
-                       'bam': self.bamFile,
-                       'filter_out': None,
-                       'extra_sampling_file': None,
-                       'max_reads': 5,
-                       'min_reads': 0,
-                       'reads_per_bp': 0.3,
-                       'total_reads': mapped,
-                       'genome_size': sum(tbit.chroms().values())}
-
-    def testWriteCorrectedChunk(self):
-        """ prepare arguments for test
-        """
-        global R_gc, R_gc_min, R_gc_max
-        R_gc = np.loadtxt(self.root + "R_gc_paired.txt")
-        global_vars['max_dup_gc'] = np.ones(301)
-        start = 200
-        end = 300
-        bedGraphStep = 25
-        return (self.chrNameBam,
-                self.chrNameBit, start, end, bedGraphStep)
-
-    def testWriteCorrectedSam(self):
-        """ prepare arguments for test
-        """
-        global R_gc, R_gc_min, R_gc_max
-        R_gc = np.loadtxt(self.root + "R_gc_paired.txt")
-        global_vars['max_dup_gc'] = np.ones(301)
-        start = 200
-        end = 250
-        return (self.chrNameBam,
-                self.chrNameBit, start, end)
-
-    def testWriteCorrectedSam_paired(self):
-        """ prepare arguments for test.
-        """
-        global R_gc, R_gc_min, R_gc_max, global_vars
-        R_gc = np.loadtxt(self.root + "R_gc_paired.txt")
-        start = 0
-        end = 500
-        global_vars['bam'] = self.root + "paired.bam"
-        return 'chr2L', 'chr2L', start, end
-
+        logger.info(f"Full computation took {int(elapsed_time/3600)}:{int(elapsed_time%3600/60):02d}:{int(elapsed_time%60):02d} (HH:MM:SS).")
 
 if __name__ == "__main__":
     main()
