@@ -125,62 +125,52 @@ def writeCorrectedSam_wrapper(args):
     return writeCorrectedSam_worker(*args)
 
 
-def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end, tag_but_not_change_number=True, verbose=False):
+def writeCorrectedBam_worker(
+    R_gc_dict,
+    bam_file,
+    twobit_file,
+    chrNameBam,
+    chrNameBit,
+    start,
+    end,
+    max_dup_gc=None,
+    tag_but_not_change_number=True,
+    verbose=False,
+    debug=False,
+    threads=10,
+    default_value=1,
+    use_nearest_weight=False,
+):
     r"""
     Writes a BAM file, deleting and adding some reads in order to compensate
-    for the GC bias, if tag_but_not_change_number is False. **This is a stochastic method.**
-    Otherwise, all alignments get a YC and a YG tag and are written to a new file containing the same amount of alns.
-    >>> np.random.seed(1)
-    >>> test = Tester()
-    >>> args = test.testWriteCorrectedSam()
-    >>> tempFile = writeCorrectedSam_worker(*args, \
-    ... tag_but_not_change_number=True, verbose=False)
-    >>> try:
-    ...     import StringIO
-    ... except ImportError:
-    ...     from io import StringIO
-    >>> ostdout = sys.stdout
-    >>> import tempfile
-    >>> sys.stdout = tempfile.TemporaryFile()
-    >>> idx = pysam.index(tempFile)
-    >>> sys.stdout = ostdout
-    >>> bam = pysam.Samfile(tempFile)
-    >>> [dict(r.tags)['YN'] for r in bam.fetch(args[0], 200, 250)]
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1]
-    >>> res = os.remove(tempFile)
-    >>> res = os.remove(tempFile+".bai")
-    >>> tempFile = \
-    ... writeCorrectedSam_worker(*test.testWriteCorrectedSam_paired(),\
-    ... tag_but_not_change_number=True, verbose=False)
-    >>> sys.stdout = tempfile.TemporaryFile()
-    >>> idx = pysam.index(tempFile)
-    >>> sys.stdout = ostdout
-    >>> bam = pysam.Samfile(tempFile)
-    >>> [dict(r.tags)['YN'] for r in bam.fetch('chr2L', 0, 50)]
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-    >>> res = os.remove(tempFile)
-    >>> res = os.remove(tempFile+".bai")
+    for the GC bias, if tag_but_not_change_number is False.
+    **This is a stochastic method.** Otherwise, all alignments get a YC and a YG tag
+     and are written to a new file containing the same amount of alns.
     """
-    global R_gc
 
-    if verbose:
-        logging.debug("Sam for %s %s %s " % (chrNameBit, start, end))
+    if debug:
+        logger.debug("Sam for %s %s %s " % (chrNameBit, start, end))
     i = 0
 
-    tbit = py2bit.open(global_vars['2bit'])
+    tbit = py2bit.open(twobit_file)
 
-    bam = openBam(global_vars['bam'])
-    tempFileName = utilities.getTempFileName(suffix='.bam')
+    # We want to speed up I/O operations for pysam by specifying threads to the AlignmentFile API.
+    # For optimization purposes, we want more compression threads for the output file.
+    # See https://github.com/pysam-developers/pysam/pull/638#issue-302695163
+    out_threads = math.ceil(threads * 2 / 3)
+    in_threads = max(1, (threads - out_threads))
 
-    outfile = pysam.Samfile(tempFileName, 'wb', template=bam)
+    bam = pysam.AlignmentFile(bam_file, "rb", threads=in_threads)
+    tempFileName = getTempFileName(suffix=".bam")
+    outfile = pysam.AlignmentFile(tempFileName, "wb", template=bam, threads=out_threads)
+
+    R_gc_lengths = np.asarray(list(R_gc_dict.keys()))
     startTime = time.time()
     matePairs = {}
     read_repetitions = 0
     removed_duplicated_reads = 0
 
-    # cache data
-    # r.flag & 4 == 0 is to filter unmapped reads that
-    # have a genomic position
+    ## general processing
     reads = 0
     pread = None
 
@@ -188,127 +178,174 @@ def writeCorrectedSam_worker(chrNameBam, chrNameBit, start, end, tag_but_not_cha
         if read.pos <= start or read.is_unmapped:
             continue
         reads += 1
-        if read.is_paired and read.is_proper_pair:
+        read_name = read.qname
+        if (
+            read.is_paired
+        ):  # As proper pairs highly depend on the mapping software, we only filter downstream for respective length!
             r_len = abs(read.template_length)
         else:
             r_len = read.query_length
         try:
-            copies = matePairs[read.qname]['copies']
-            gc = matePairs[read.qname]['gc']
-            del (matePairs[read.qname])
+            # copies = matePairs[read_name]['copies']
+            gc = matePairs[read_name]["gc"]
+            if tag_but_not_change_number:
+                del matePairs[read_name]
         except:
             # this exception happens when a mate is
             # not present. This could
             # happen because of removal of the mate
             # by some filtering
-            gc = getReadGCcontent(tbit, read,  # fragmentLength, not needed anymore
-                                  chrNameBit)
-            if verbose:
-                logging.debug(f"writeCorrectedSam_worker; gc:{gc}")
+            gc = getReadGCcontent(tbit, read, chrNameBit)
+            if debug:
+                logger.debug(
+                    f"writeCorrectedSam_worker;read_name: {read_name}; gc:{gc}"
+                )
 
+        if gc:
+            gc_for_tag = gc  # int(100 * np.round(float(gc) / fragmentLength,
+            #                   decimals=2))
+            try:
+                # ('YC', float(round(float(1) / R_gc_dict[gc], 2)), "f"))
+                # readTag.append(
+                #    ('YC', R_gc_dict[r_len][gc], "f")
+                # )
+                yc_tag = ("YC", R_gc_dict[r_len][gc], "f")
+            except KeyError as e:
+                if use_nearest_weight:
+                    r_len = findNearestIndex(R_gc_lengths, r_len)
+                    if debug:
+                        logger.debug(
+                            f"Weight: Read length {e} was not in correction table. \
+                                Correction was done with closest available read length: {r_len}"
+                        )
+                    yc_tag = ("YC", R_gc_dict[r_len][gc], "f")
+                else:
+                    if debug:
+                        logger.debug(
+                            f"Weight: Read length {e} was not in correction table. \
+                                Correction was done with the default value: {default_value}"
+                        )
+                    yc_tag = ("YC", default_value, "f")
+            read.set_tag(*yc_tag)
+        else:
+            gc_for_tag = -1
+
+        # yg_tag = ('YG', gc_for_tag, "i")
+        read.set_tag("YG", gc_for_tag, "i")
+
+        if tag_but_not_change_number:
+            if read.is_paired and not read.mate_is_unmapped and not read.is_reverse:
+                matePairs[read_name] = {"gc": gc}
+            outfile.write(read)
+            if debug:
+                if i % 350000 == 0 and i > 0:
+                    endTime = time.time()
+                    logger.debug(
+                        f"Processing {i} reads ({i / (endTime - startTime):.1f} per sec) @ {chrNameBit}:{start}-{end}"
+                    )
+            i += 1
+            continue
+
+        # Everything below is only executed if copies or reads are created
+
+        try:
+            copies = matePairs[read_name]["copies"]
+            # gc = matePairs[read_name]['gc']
+            del matePairs[read_name]
+        except:
+            # this exception happens when a mate is
+            # not present. This could
+            # happen because of removal of the mate
+            # by some filtering
             if gc:
-                # copies = numCopiesOfRead(float(1) / R_gc[gc])
-                # copies= R_gc.loc[r_len,str(gc)]
                 try:
-                    copies = numCopiesOfRead(float(1) / R_gc.loc[r_len][str(gc)])
+                    copies = numCopiesOfRead(R_gc_dict[r_len][gc])
                 except KeyError as e:
-                    r_len = findNearestIndex(R_gc.index, r_len)
-                    logging.debug(
-                        f"Copies: Read length {e} was not in correction table. Correction was done with closest "
-                        f"available read length: {r_len} ",
-                        file=sys.stderr)
-                    copies = numCopiesOfRead(float(1) / R_gc.loc[r_len][str(gc)])
+                    if use_nearest_weight:
+                        r_len = findNearestIndex(R_gc_lengths, r_len)
+                        if debug:
+                            logger.debug(
+                                f"Copies: Read length {e} was not in correction table. \
+                                    Correction was done with closest available read length: {r_len} "
+                            )
+                        copies = numCopiesOfRead(R_gc_dict[r_len][gc])
+                    else:
+                        if debug:
+                            logger.debug(
+                                f"Copies: Read length {e} was not in correction table. \
+                                    Copies was set to 1"
+                            )
+                        copies = 1
             else:
                 copies = 1
         # is this read in the same orientation and position as the previous?
-        if gc and reads > 1 and read.pos == pread.pos \
-                and read.is_reverse == pread.is_reverse \
-                and read.pnext == pread.pnext:
+        if (
+            gc
+            and reads > 1
+            and read.pos == pread.pos
+            and read.is_reverse == pread.is_reverse
+            and read.pnext == pread.pnext
+        ):
             read_repetitions += 1
             try:
-                tmp_max_dup_gc = global_vars['max_dup_gc'][r_len][gc]
+                tmp_max_dup_gc = max_dup_gc[r_len][gc]
             except KeyError as e:
-                r_len = findNearestIndex(R_gc.index, r_len)  # a logging.info would be nice in the future
-                tmp_max_dup_gc = global_vars['max_dup_gc'][r_len][gc]
+                if use_nearest_weight:
+                    r_len = findNearestIndex(R_gc_lengths, r_len)
+                    if debug:
+                        logger.debug(
+                            f"Max_dup_copies: Read length {e} was not in correction table. \
+                                Correction was done with closest available read length: {r_len}"
+                        )
+                    tmp_max_dup_gc = max_dup_gc[r_len][gc]
+                else:
+                    if debug:
+                        logger.debug(
+                            f"Max_dup_copies: Read length {e} was not in correction table. \
+                                Max_dup_copies were set to 1"
+                        )
+                    tmp_max_dup_gc = 1
             if read_repetitions >= tmp_max_dup_gc:
                 copies = 0  # in other words do not take into account this read
                 removed_duplicated_reads += 1
         else:
             read_repetitions = 0
 
-        readName = read.qname
-        # Each tag is a tuple of (tag name, value, type)
-        # Note that get_tags() returns ord(type) rather than type and this must
-        # be fixed!
-        # It turns out that the "with_value_type" option only started working in
-        # pysam-0.8.4, so we can't reliably add tags on earlier versions without
-        # potentially creating BAM files that break HTSJDK/IGV/etc.
-        readTag = read.get_tags(with_value_type=True)
-        replace_tags = False
-        if len(readTag) > 0:
-            if len(readTag[0]) == 3:
-                if type(readTag[2]) is int:
-                    readTag = [(x[0], x[1], chr(x[2])) for x in readTag]
-                replace_tags = True
-        else:
-            replace_tags = True
-        if gc:
-            gc_for_tag = gc  # int(100 * np.round(float(gc) / fragmentLength,
-            #                   decimals=2))
-            try:
-                # ('YC', float(round(float(1) / R_gc[gc], 2)), "f"))
-                readTag.append(
-                    ('YC', float(round(float(1) / R_gc.loc[r_len][str(gc)], 2)), "f")
-                )
-            except KeyError as e:
-                r_len = findNearestIndex(R_gc.index, r_len)
-                logging.debug(
-                    f"Weight: Read length {e} was not in correction table. Correction was done with closest available read length: {r_len} ",
-                    file=sys.stderr)
-                readTag.append(
-                    ('YC', float(round(float(1) / R_gc.loc[r_len][str(gc)], 2)), "f")
-                )
-        else:
-            gc_for_tag = -1
-        readTag.append(('YG', gc_for_tag, "i"))
-        if replace_tags:
-            read.set_tags(readTag)
-
-        if read.is_paired and read.is_proper_pair \
-                and not read.mate_is_unmapped \
-                and not read.is_reverse:
-            matePairs[readName] = {'copies': copies,
-                                   'gc': gc}
-
-        pread = copy.copy(read)  # read.copy() # else copy.copy(read)
-        """
-        outfile.write(read)
-        """
-        if tag_but_not_change_number:
-            outfile.write(read)
-            continue
+        if read.is_paired and not read.mate_is_unmapped and not read.is_reverse:
+            matePairs[read_name]["copies"] = copies
+        pread = copy.copy(read)  # copy read for calculating read repetitions
         for numCop in range(1, copies + 1):
             # the read has to be renamed such that newly
             # formed pairs will match
             if numCop > 1:
-                read.qname = readName + "_%d" % numCop
+                read.qname = read_name + "_%d" % numCop
             outfile.write(read)
-        if verbose:
-            if i % 500000 == 0 and i > 0:
+
+        if debug:
+            if i % 350000 == 0 and i > 0:
                 endTime = time.time()
-                logging.debug(f"{multiprocessing.current_process().name},  processing {i} "
-                              f"({i / (endTime - startTime):.1f} per sec) reads @ {chrNameBit}:{start}-{end}")
+                logger.debug(
+                    f"Processing {i} reads ({i / (endTime - startTime):.1f} per sec) @ {chrNameBit}:{start}-{end}"
+                )
         i += 1
 
+    # finish up process
     outfile.close()
     if verbose:
         endTime = time.time()
-        logging.debug(f"{multiprocessing.current_process().name},  processing {i} "
-                      f"({i / (endTime - startTime):.1f} per sec) reads @ {chrNameBit}:{start}-{end}")
-        percentage = float(removed_duplicated_reads) * 100 / reads \
-            if reads > 0 else 0
-        logging.debug("duplicated reads removed %d of %d (%.2f) " %
-                      (removed_duplicated_reads, reads, percentage))
+        logger.info(
+            f"Processed {i} reads ({i / (endTime - startTime):.1f} per sec) @ {chrNameBit}:{start}-{end}"
+        )
+
+        if not tag_but_not_change_number:  # return only if read copies were changed
+            percentage = (
+                float(removed_duplicated_reads) * 100 / reads if reads > 0 else 0
+            )
+            logger.info(
+                "duplicated reads removed %d of %d (%.2f) "
+                % (removed_duplicated_reads, reads, percentage)
+            )
+
     return tempFileName
 
 
