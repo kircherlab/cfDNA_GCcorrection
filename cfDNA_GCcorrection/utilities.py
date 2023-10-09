@@ -527,7 +527,7 @@ def getTempFileName(suffix=""):
     import tempfile
 
     _tempFile = tempfile.NamedTemporaryFile(
-        prefix="_deeptools_", suffix=suffix, delete=False
+        prefix="_cfDNA-GCcorrection_", suffix=suffix, delete=False
     )
 
     memFileName = _tempFile.name
@@ -648,7 +648,7 @@ def bam_blacklisted_reads(
     hasOverlaps, minOverlap = bl.hasOverlaps(returnDistance=True)
     if hasOverlaps:
         sys.exit(
-            "Your blacklist file(s) has (have) regions that overlap. Proceeding with such a file would result in deepTools incorrectly calculating scaling factors. As such, you MUST fix this issue before being able to proceed.\n"
+            "Your blacklist file(s) has (have) regions that overlap. Proceeding with such a file would result in cfDNA_GCcorrection incorrectly calculating scaling factors. As such, you MUST fix this issue before being able to proceed.\n"
         )
     if minOverlap < 1000:
         sys.stderr.write(
