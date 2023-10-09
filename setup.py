@@ -16,7 +16,7 @@ __version__ = '%s'
 
 def get_version():
     try:
-        f = open("deeptools/_version.py")
+        f = open("cfDNA_GCcorrection/_version.py")
     except EnvironmentError:
         return None
     for line in f.readlines():

@@ -10,21 +10,19 @@ def parse_arguments(args=None):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""
-deepTools is a suite of python tools particularly developed for the efficient analysis of
-high-throughput sequencing data, such as ChIP-seq, RNA-seq or MNase-seq.
-
-Each tool should be called by its own name as in the following example:
-
- $ bamCoverage -b reads.bam -o coverage.bw
-
-[ Tools for BAM and bigWig file processing ]
-    correctGCBias           corrects GC bias from bam file. Don't use it with ChIP data
+cfDNA_GCcorrection is a suite of python tools particularly developed for the efficient 
+analysis and correction of GC bias in cfDNA sequencing data. 
 
 [ Tools for QC ]
-    computeGCBias           computes and plots the GC bias of a sample
+    computeGCBias_background        computes the GC bias of a reference genome
+    computeGCBias_readlen           computes the length based GC bias of a sample
 
 
-For more information visit: http://deeptools.readthedocs.org
+[ Tools for BAM and bigWig file processing ]
+    correctGCBias_readlen           corrects GC bias from bam file by attaching weight tags 
+                                    or changing read copies. 
+
+
 """)
 
     parser.add_argument('--version', action='version',

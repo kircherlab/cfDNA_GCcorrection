@@ -1,5 +1,5 @@
 
-**Welcome to deepTools GitHub repository! Please check the following regarding
+**Welcome to cfDNA_GCcorrection GitHub repository! Please check the following regarding
 your pull request :**
 
  - [ ] Does the PR contain new feature?

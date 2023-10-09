@@ -1,6 +1,6 @@
 # Contributing
 
-**Welcome to deepTools GitHub repository! Please check the following instructions
+**Welcome to cfDNA_GCcorrection GitHub repository! Please check the following instructions
 for contributing to the repository :**
 
 ## Adding features or fixing bugs
@@ -14,7 +14,3 @@ for contributing to the repository :**
 * Add description of your changes
 * Ensure tests are passing
 * Ensure branch is mergable
-
-## Testing
-
-* Please make sure that travis tests are passing
