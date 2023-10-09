@@ -1,22 +1,21 @@
 # cfDNA GCcorrection <!-- omit in toc -->
 
 - [Introduction](#introduction)
-- [Documentation:](#documentation)
+- [Documentation](#documentation)
   - [Installation](#installation)
   - [Quickstart](#quickstart)
-    - [Executing computeGCBias_readlen](#executing-computegcbias_readlen)
-    - [Executing correctGCBias_readlen](#executing-correctgcbias_readlen)
+    - [Executing computeGCBias\_readlen](#executing-computegcbias_readlen)
+    - [Executing correctGCBias\_readlen](#executing-correctgcbias_readlen)
     - [Getting required Files/parameters](#getting-required-filesparameters)
+  - [Speeding up GC bias calculation for multiple samples](#speeding-up-gc-bias-calculation-for-multiple-samples)
 - [Example](#example)
 - [Acknowledgment](#acknowledgment)
-
 
 ## Introduction
 
 cfDNA_GCcorrection is an easy-to-use tool to determine and correct GC biases in cell-free DNA (cfDNA) samples. Based on fragment length and GC distributions, it calculates read-level correction values and makes them available as tags in SAM/BAM format. This additional information can be used during signal extraction in various metrics (e.g., allelic balance, coverage, read ends/midpoints, WPS), while preserving the original read coverage patterns for specific analyses.
 
-
-## Documentation:
+## Documentation
 
 ### Installation
 
@@ -37,13 +36,12 @@ The GCbiascorrection described in this repo works in two steps.
 
 #### Executing computeGCBias_readlen
 
-First the GC bias is calculated with the help of the `computeGCBias_readlen` script, which returns a tab-separated file containing the expected, observed GC x readlenght distribution and the ratio of these mesures.
+First the GC bias is calculated with the help of the `computeGCBias_readlen` script, which returns a tab-separated file containing the expected, observed GC x fragment length distribution and the ratio of these measures.
 
 Given a `.bam` file with WGS data from a liquid biopsy and a genome reference in `.2bit` format:
 
 ```bash
 computeGCBias_readlen -b <INPUT BAMFILE> \
-    --effectiveGenomeSize <EFFECTIVEGENOMESIZE> \
     -g <2BIT GENOME> \
     -I \
     -p <NUMBER OF CPU CORES> \
@@ -51,6 +49,8 @@ computeGCBias_readlen -b <INPUT BAMFILE> \
 ```
 
 For more options use the `--help` flag.
+
+**Note:** Computation of expected GC x fragment length distribution is expensive. If multiple samples are to be processed, genome specific background profiles can be reused. For more details see [this section](#speeding-up-gc-bias-calculation-for-multiple-samples)
 
 #### Executing correctGCBias_readlen
 
@@ -87,7 +87,34 @@ A more extensive documentation on determining the effective genome size can be f
 
 2bit versions of the most common genomes can be downloaded from [UCSC](http://hgdownload.cse.ucsc.edu/gbdb/) and are indicated by the `.2bit extension`.
 
-If the genome file is not available  fasta files can be converted to 2bit  by using [faToTwoBit](http://hgdownload.cse.ucsc.edu/admin/exe/).
+If the genome file is not available  fasta files can be converted to 2bit by using [faToTwoBit](http://hgdownload.cse.ucsc.edu/admin/exe/).
+
+### Speeding up GC bias calculation for multiple samples
+
+The computation of expected GC x fragment length distribution (background profile) is expensive. As background profile is only dependent on the genome, it can be precalculated and reused for multiple samples mapped to the same genome build. This approach reduces the runtime of the GC bias calculation significantly, if multiple samples are to be processed.
+
+The background profile can be calculated using the `computeGCBias_background` script.
+
+```bash
+computeGCBias_background -b <INPUT BAMFILE> \
+    -g <2BIT GENOME> \
+    -I \
+    -p <NUMBER OF CPU CORES> \
+    --output <GCBIAS_background_FILE>
+```
+
+The resulting output file can be used as an additional input for the `computeGCBias_readlen` script by specifying it using the  `--precomputed_background` flag.
+
+```bash
+computeGCBias_readlen -b <INPUT BAMFILE> \
+    -g <2BIT GENOME> \
+    -I \
+    --precomputed_background <GCBIAS_background_FILE> \
+    -p <NUMBER OF CPU CORES> \
+    --GCbiasFrequenciesFile <GCBIAS_OUTPUT_FILE>
+```
+
+If a precomputed background profile was specified, the `computeGCBias_readlen` script will load it, check its integrity and use it during the GC bias calculations, effectively skipping the expensive computation of the background profile.
 
 ## Example
 
