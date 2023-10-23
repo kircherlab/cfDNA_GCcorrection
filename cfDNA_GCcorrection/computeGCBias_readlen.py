@@ -512,9 +512,7 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False, minreads=4):
         n_int = int(N_f2(x).item())
         f_list.append(f_int if f_int > 0 else 0)
         n_list.append(n_int if n_int > 0 else 0)
-        #f_list.append(int(F_f2(x)))
-        #n_list.append(int(N_f2(x)))
-        r_list.append(ratio)
+        r_list.append(ratio if ratio > 0 else 1)
 
     ratio_dense = np.array(r_list).reshape(N_a.shape).T
     F_dense = np.array(f_list).reshape(N_a.shape).T
