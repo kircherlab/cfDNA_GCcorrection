@@ -656,6 +656,15 @@ def get_ratio(df, minreads=4):
             less accurate results. Deactivated by default.""",
 )
 @click.option(
+    "-ni",
+    "--normalized_interpolation",
+    "normalized_interpolation",
+    is_flag=True,
+    help="""Flag: option to normalize smooth parameters for interpolation. 
+            If active, interpolation results are invariant to xdata range and 
+            less sensitive to nonuniformity of weights and xdata clumping.""",
+)
+@click.option(
     "--minreads",
     "minreads",
     default=4,
@@ -745,6 +754,7 @@ def main(
     maxlen,
     lengthStep,
     interpolate,
+    normalized_interpolation,
     minreads,
     measurement_output,
     precomputed_Ngc,
@@ -909,7 +919,7 @@ def main(
         if measurement_output:
             logger.info("saving measured data")
             data.to_csv(measurement_output, sep="\t")
-        r_data = interpolate_ratio_csaps(data, minreads=minreads)
+        r_data = interpolate_ratio_csaps(data, minreads=minreads, normalized=normalized_interpolation)
         r_data.to_csv(gcbias_frequency_output, sep="\t")
     else:
         if measurement_output:
