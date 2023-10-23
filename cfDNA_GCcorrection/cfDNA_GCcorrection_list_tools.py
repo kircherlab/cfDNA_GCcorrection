@@ -3,7 +3,7 @@
 
 import argparse
 import sys
-from deeptools._version import __version__
+from cfDNA_GCcorrection._version import __version__
 
 
 def parse_arguments(args=None):
@@ -18,7 +18,7 @@ analysis and correction of GC bias in cfDNA sequencing data.
     computeGCBias_readlen           computes the length based GC bias of a sample
 
 
-[ Tools for BAM and bigWig file processing ]
+[ Tools for BAM file processing ]
     correctGCBias_readlen           corrects GC bias from bam file by attaching weight tags 
                                     or changing read copies. 
 
