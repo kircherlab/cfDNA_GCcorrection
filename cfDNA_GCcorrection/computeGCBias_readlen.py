@@ -43,6 +43,7 @@ STANDARD_CHROMOSOMES = (
 
 ###### define functions doing the work ######
 def flatten(xs):
+    """Flattens nested sequences."""
     for x in xs:
         if isinstance(x, Sequence) and not isinstance(x, (str, bytes)):
             yield from flatten(x)
@@ -219,7 +220,7 @@ def get_F_GC(
     return dict(sub_Fdict)
 
 
-###### worker definition for ray ######
+###### worker definition for mpire ######
 
 
 def tabulateGCcontent_wrapper(param_dict, *chunk):
@@ -232,13 +233,13 @@ def tabulateGCcontent_wrapper(param_dict, *chunk):
 
     if F_GC_only:
 
-        logger.debug(f"Calculating F_GC only.")
+        logger.debug("Calculating F_GC only.")
         wrapper_fdict = dict()
 
         for task in flatten(chunk):
             logger.debug(f"Calculating values for task: {task}")
             subF_gc = tabulateGCcontent_worker(**task, **param_dict)
-            logger.debug(f"Updating wrapper dictionaries.")
+            logger.debug("Updating wrapper dictionaries.")
             wrapper_fdict = {
                 k: wrapper_fdict.get(k, 0)
                 + subF_gc.get(k, np.zeros(100 + 1, dtype="int"))
@@ -257,7 +258,7 @@ def tabulateGCcontent_wrapper(param_dict, *chunk):
         for task in flatten(chunk):
             logger.debug(f"Calculating values for task: {task}")
             subN_gc, subF_gc = tabulateGCcontent_worker(**task, **param_dict)
-            logger.debug(f"Updating wrapper dictionaries.")
+            logger.debug("Updating wrapper dictionaries.")
             wrapper_ndict = {
                 k: wrapper_ndict.get(k, 0)
                 + subN_gc.get(k, np.zeros(100 + 1, dtype="int"))
@@ -875,7 +876,7 @@ def main(
             chrom_dict = {key: tuple(value) for key, value in chrom_dict.items()}
             regions_params["genome"] = chrom_dict
         logger.info(
-            f"Overwriting the following options: genome, sampleSize, region and seed"
+            "Overwriting the following options: genome, sampleSize, region and seed"
         )
         logger.debug(f"params: {regions_params}")
         seed = regions_params["seed"]
