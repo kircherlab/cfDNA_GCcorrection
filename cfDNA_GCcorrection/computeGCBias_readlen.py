@@ -43,6 +43,7 @@ STANDARD_CHROMOSOMES = (
 
 ###### define functions doing the work ######
 def flatten(xs):
+    """Flattens nested sequences."""
     for x in xs:
         if isinstance(x, Sequence) and not isinstance(x, (str, bytes)):
             yield from flatten(x)
@@ -219,7 +220,7 @@ def get_F_GC(
     return dict(sub_Fdict)
 
 
-###### worker definition for ray ######
+###### worker definition for mpire ######
 
 
 def tabulateGCcontent_wrapper(param_dict, *chunk):
@@ -232,13 +233,13 @@ def tabulateGCcontent_wrapper(param_dict, *chunk):
 
     if F_GC_only:
 
-        logger.debug(f"Calculating F_GC only.")
+        logger.debug("Calculating F_GC only.")
         wrapper_fdict = dict()
 
         for task in flatten(chunk):
             logger.debug(f"Calculating values for task: {task}")
             subF_gc = tabulateGCcontent_worker(**task, **param_dict)
-            logger.debug(f"Updating wrapper dictionaries.")
+            logger.debug("Updating wrapper dictionaries.")
             wrapper_fdict = {
                 k: wrapper_fdict.get(k, 0)
                 + subF_gc.get(k, np.zeros(100 + 1, dtype="int"))
@@ -257,7 +258,7 @@ def tabulateGCcontent_wrapper(param_dict, *chunk):
         for task in flatten(chunk):
             logger.debug(f"Calculating values for task: {task}")
             subN_gc, subF_gc = tabulateGCcontent_worker(**task, **param_dict)
-            logger.debug(f"Updating wrapper dictionaries.")
+            logger.debug("Updating wrapper dictionaries.")
             wrapper_ndict = {
                 k: wrapper_ndict.get(k, 0)
                 + subN_gc.get(k, np.zeros(100 + 1, dtype="int"))
@@ -446,8 +447,29 @@ def tabulateGCcontent(
 
 ###### Processing mesured values either raw or with interpolation ######
 
+def apply_IQR_filter(series, IQR_factor=1.5, min_lower=0.01, default=1):
+    """Filter ratio values based on IQR of ratio distribution across all bins.
 
-def interpolate_ratio_csaps(df, smooth=None, normalized=False, minreads=4):
+    Args:
+        series (pandas Series)      : Stacked, 1D array of ratio values.
+        IQR_factor (float, optional): Threshold for IQR outlier detection. Defaults to 1.5.
+        min_lower (float, optional) : Additional min lower filter. Everything below a ratio of 0.01 
+                                     would result in unlikely correction values >100. Defaults to 0.01.
+        default (int, optional)     : Default value used for replacing outliers. Defaults to 1.
+
+    Returns:
+        pandas Series: Filtered ratio values.
+    """
+    lower_q, upper_q = series.quantile([0.25,0.75]).values
+    IQR = upper_q-lower_q
+    lower = lower_q-IQR_factor*IQR
+    if lower < min_lower:
+        lower = min_lower
+    upper = upper_q+IQR_factor*IQR
+    #print(lower,upper)
+    return series.apply(lambda x: x if lower<=x<=upper else default)
+
+def interpolate_ratio_csaps(df, smooth=None, normalized=False, default_ratio=1, filter_outliers=True, IQR_factor=1.5):
     # separate hypothetical read density from measured read density
     N_GC = df.loc["N_gc"]
     F_GC = df.loc["F_gc"]
@@ -486,8 +508,8 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False, minreads=4):
         readlen_tmp = i
         N_tmp = N_f2([readlen_tmp, N_GC_gc])
         F_tmp = F_f2([readlen_tmp, F_GC_gc])
-        scaling_dict[i] = int(np.sum(N_tmp) / np.sum(F_tmp)) if np.sum(F_tmp) > 0 else 0
-
+        scaling_dict[i] = int(np.sum(N_tmp) / np.sum(F_tmp)) if np.sum(F_tmp) > 0 else 0  
+        
     # get dense data (full GC and readlen range)
     N_a, N_b = np.meshgrid(
         np.arange(N_GC_min, N_GC_max + 1, 1), N_GC.columns.to_numpy(dtype=int)
@@ -504,20 +526,21 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False, minreads=4):
     for i in N_dense_points:
         x = i.tolist()
         scaling = scaling_dict[x[0]]
-        if (N_f2(x)).astype(int) > minreads and (F_f2(x)).astype(int) > minreads:
+        if (N_f2(x)).astype(int) > 0 and (F_f2(x)).astype(int) > 0:
             ratio = int(F_f2(x).item()) / int(N_f2(x).item()) * scaling
         else:
-            ratio = 1
+            ratio = np.nan
         f_int = int(F_f2(x).item())
         n_int = int(N_f2(x).item())
         f_list.append(f_int if f_int > 0 else 0)
         n_list.append(n_int if n_int > 0 else 0)
-        r_list.append(ratio if ratio > 0 else 1)
+        r_list.append(ratio if ratio > 0 else np.nan)
 
+        
     ratio_dense = np.array(r_list).reshape(N_a.shape).T
     F_dense = np.array(f_list).reshape(N_a.shape).T
     N_dense = np.array(n_list).reshape(N_a.shape).T
-
+    
     # create indices for distributions
     ind_N = pd.MultiIndex.from_product([["N_gc"], np.arange(N_GC_min, N_GC_max + 1, 1)])
     ind_F = pd.MultiIndex.from_product([["F_gc"], np.arange(N_GC_min, N_GC_max + 1, 1)])
@@ -526,13 +549,20 @@ def interpolate_ratio_csaps(df, smooth=None, normalized=False, minreads=4):
     NInt_df = pd.DataFrame(N_dense, columns=N_GC.columns, index=ind_N)
     FInt_df = pd.DataFrame(F_dense, columns=N_GC.columns, index=ind_F)
     RInt_df = pd.DataFrame(ratio_dense, columns=N_GC.columns, index=ind_R)
-
+    
+    if filter_outliers: # replace outliers with a default value
+        RInt_df = apply_IQR_filter(RInt_df.stack(dropna=False), IQR_factor=IQR_factor, default=np.nan).unstack()
+        
+    
+    RInt_df = RInt_df.fillna(default_ratio)
+    
+    
     return pd.concat(
         [NInt_df, FInt_df, RInt_df]
-    )  # NInt_df.append(FInt_df).append(RInt_df)
+    )
 
 
-def get_ratio(df, minreads=4):
+def get_ratio(df, default_ratio=1, filter_outliers=True, IQR_factor=1.5):
     # separate hypothetical read density from measured read density
     N_GC = df.loc["N_gc"]
     F_GC = df.loc["F_gc"]
@@ -553,15 +583,22 @@ def get_ratio(df, minreads=4):
         n_gc_t = N_GC.loc[i]
         r_gc_t = np.array(
             [
-                float(f_gc_t[x]) / n_gc_t[x] * scaling
-                if n_gc_t[x] and f_gc_t[x] > minreads
-                else 1
+                int(f_gc_t[x]) / int(n_gc_t[x]) * scaling
+                if n_gc_t[x] and f_gc_t[x] > 0
+                else np.nan
                 for x in range(len(f_gc_t))
             ]
         )
         r_dict[i] = r_gc_t
 
     ratio_dense = pd.DataFrame.from_dict(r_dict, orient="index", columns=N_GC.columns)
+
+    if filter_outliers: # replace outliers with a default value
+        ratio_dense = apply_IQR_filter(ratio_dense.stack(dropna=False), IQR_factor=IQR_factor, default=np.nan).unstack()
+        
+    
+    ratio_dense = ratio_dense.fillna(default_ratio)
+
     ind = pd.MultiIndex.from_product([["R_gc"], ratio_dense.index])
     ratio_dense.index = ind
 
@@ -875,7 +912,7 @@ def main(
             chrom_dict = {key: tuple(value) for key, value in chrom_dict.items()}
             regions_params["genome"] = chrom_dict
         logger.info(
-            f"Overwriting the following options: genome, sampleSize, region and seed"
+            "Overwriting the following options: genome, sampleSize, region and seed"
         )
         logger.debug(f"params: {regions_params}")
         seed = regions_params["seed"]
@@ -919,14 +956,14 @@ def main(
         if measurement_output:
             logger.info("saving measured data")
             data.to_csv(measurement_output, sep="\t")
-        r_data = interpolate_ratio_csaps(data, minreads=minreads, normalized=normalized_interpolation)
+        r_data = interpolate_ratio_csaps(data, normalized=normalized_interpolation)
         r_data.to_csv(gcbias_frequency_output, sep="\t")
     else:
         if measurement_output:
             logger.info(
                 "Option MeasurementOutput has no effect. Measured data is saved in GCbiasFrequencies file!"
             )
-        r_data = get_ratio(data, minreads=minreads)
+        r_data = get_ratio(data)
         out_data = data.append(r_data)
         out_data.to_csv(gcbias_frequency_output, sep="\t")
 
