@@ -43,7 +43,7 @@ Given a `.bam` file with WGS data from a liquid biopsy and a genome reference in
 ```bash
 computeGCBias_readlen -b <INPUT BAMFILE> \
     -g <2BIT GENOME> \
-    -I \
+    -i \
     -p <NUMBER OF CPU CORES> \
     --GCbiasFrequenciesFile <GCBIAS_OUTPUT_FILE>
 ```
@@ -98,7 +98,7 @@ The background profile can be calculated using the `computeGCBias_background` sc
 ```bash
 computeGCBias_background -b <INPUT BAMFILE> \
     -g <2BIT GENOME> \
-    -I \
+    -i \
     -p <NUMBER OF CPU CORES> \
     --output <GCBIAS_background_FILE>
 ```
@@ -108,7 +108,7 @@ The resulting output file can be used as an additional input for the `computeGCB
 ```bash
 computeGCBias_readlen -b <INPUT BAMFILE> \
     -g <2BIT GENOME> \
-    -I \
+    -i \
     --precomputed_background <GCBIAS_background_FILE> \
     -p <NUMBER OF CPU CORES> \
     --GCbiasFrequenciesFile <GCBIAS_OUTPUT_FILE>
@@ -136,7 +136,6 @@ From these values we can calculate readlength and GC dependent correction values
   <figcaption><strong>Figure 2.  GC bias ratio before and after correction.</strong>  Shown is the ratio as in Figure 1 after the initial analysis of the sample (left) and after applying the respective correction (right).</figcaption>
 </figure>
 <br><br>
-
 
 One potential application is signal extraction around transcription afctor binding sites (TFBS). Firgure 3 shows the coverage signal around the TFBS of LYL1, a transcription factor associated with hematopoiesis. 
 
