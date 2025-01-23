@@ -688,9 +688,8 @@ def get_ratio(df, default_ratio=1, filter_outliers=True, IQR_factor=1.5):
     is_flag=True,
     default=False,
     show_default=True,
-    help="""Interpolates GC values and correction for missing read lengths.
-            This might substantially reduce computation time, but might lead to
-            less accurate results. Deactivated by default.""",
+    help="""Interpolates and smoothes GC values and correction for missing read lengths.
+            Deactivated by default.""",
 )
 @click.option(
     "-ni",
