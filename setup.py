@@ -75,7 +75,7 @@ setup(
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Bio-Informatics'],
     install_requires=[
-        "pandas",
+        "pandas >= 2",
         "numpy >= 1.9.0",
         "scipy >= 0.17.0",
         "matplotlib >= 3.3.0",
@@ -85,12 +85,11 @@ setup(
         "py2bit >= 0.2.0",
         "plotly >= 4.9",
         "deeptoolsintervals >= 0.1.8",
-        "csaps",
-        "ray",
-        "pybedtools",
-        "click",
-        "mpire",
-        "loguru"
+        "csaps >= 1.1.0",
+        "pybedtools >= 0.10",
+        "click >= 8.0",
+        "mpire >= 2.7",
+        "loguru >= 0.7.0"
     ],
     zip_safe=True,
     cmdclass={'sdist': sdist, 'install': install}
