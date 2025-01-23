@@ -30,6 +30,7 @@ pip install -e .
 ```
 
 **note:** pybedtools needs a locally installed version of bedtools! Please install it by other means. See the official [documentation](https://bedtools.readthedocs.io/en/latest/content/installation.html).
+
 ### Quickstart
 
 The GCbiascorrection described in this repo works in two steps.
@@ -62,7 +63,6 @@ The second step uses these precomputed values to compute correction values and a
         -g <2BIT GENOME> \
         --GCbiasFrequenciesFile <GCBIAS_OUTPUT_FILE> \
         -p <NUMBER OF CPU CORES> \
-        -w \
         -o <GCWEIGHTED_OUTPUT_BAM>
 ```
 
@@ -74,7 +74,7 @@ For more options use the `--help` flag.
 
 The effective genome size is the portion of the genome that is mappable. This parameter will be used for creating the sampling distribution.
 
-The most used values are: 
+The most used values are:
 
 | Genome | Effective size |
 |--------|----------------|
@@ -103,7 +103,7 @@ computeGCBias_background -b <INPUT BAMFILE> \
     --output <GCBIAS_background_FILE>
 ```
 
-The resulting output file can be used as an additional input for the `computeGCBias_readlen` script by specifying it using the  `--precomputed_background` flag.
+The resulting output file can be used as an additional input for the `computeGCBias_readlen` script by specifying it using the`--precomputed_background` flag.
 
 ```bash
 computeGCBias_readlen -b <INPUT BAMFILE> \
